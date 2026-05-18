@@ -8,14 +8,14 @@ If you're seeing this, you've probably already done this step. Congrats!
 
 ```sh
 # create a new project
-npx sv create e2ee-chat
+npx sv create my-app
 ```
 
 To recreate this project with the same configuration:
 
 ```sh
 # recreate this project
-npx sv@0.15.2 create --template minimal --types ts --add eslint prettier --install npm e2ee-chat
+npx sv@0.15.3 create --template minimal --types ts --add tailwindcss="plugins:typography" --install npm my-app
 ```
 
 ## Developing
