@@ -1,5 +1,12 @@
 <script lang="ts">
-  import { Button } from "$lib/components/ui/button";
-</script>
+    import { goto } from "$app/navigation";
+    import { onMount } from "svelte";
 
-<Button>Click me</Button>
+    onMount(() => {
+        if (!window.sessionStorage.getItem('name')) {
+            goto('/auth');
+        } else {
+            goto('/chat');
+        }
+    });
+</script>
