@@ -13,11 +13,10 @@
 	let { form }: PageProps = $props();
 </script>
 
-<form use:enhance={({ formData }) => {
+<form use:enhance={() => {
   return async ({ result }) => {
     if (result.type === 'success') {
-      window.sessionStorage.setItem('name', formData.get('name')?.toString()!);
-      await goto('/chat');
+      await goto(`/chat/${result.data}`);
     }
   }
 }} method="POST" class="grid w-screen h-screen place-content-center">
@@ -33,7 +32,7 @@
     </Field.FieldError>
   {/if}
   <InputGroup.Root class="mt-2 py-2">
-    <InputGroup.Input min={0} maxlength={20} name="password" placeholder="Пароль" />
+    <InputGroup.Input min={0} maxlength={6} name="password" placeholder="Пароль" />
     <InputGroup.Addon>
       <KeyIcon />
     </InputGroup.Addon>
