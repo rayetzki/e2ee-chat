@@ -1,25 +1,28 @@
 import { fail, redirect } from '@sveltejs/kit';
 
 export async function handle({ event, resolve }) {
-  const chatId = event.cookies.get('chatId');
+  const sessionId = event.cookies.get('sessionId');
   const protectedRoutes = ['', 'chat'];
 
-  if (!chatId) {
+  if (!sessionId) {
     const currentPathname = event.url.pathname.split('/')[1]!;
+
     if (protectedRoutes.includes(currentPathname)) {
-        throw redirect(303, '/auth');
+      throw redirect(303, '/auth');
     }
   } else {
+    const authorizedChatId = event.cookies.get('chatId');
+
     if (event.url.pathname.startsWith('/chat')) {
-        const [_, pageChatId] = event.url.pathname.split('/chat/');
-        console.assert(pageChatId === chatId);
-        if (pageChatId !== chatId) {
-            throw fail(404);
-        }
+      const [_, chatId] = event.url.pathname.split('/chat/');
+
+      if (authorizedChatId !== chatId) {
+        throw fail(404);
+      }
     } else {
-        throw redirect(303, `/chat/${chatId}`);
+      throw redirect(303, `/chat/${authorizedChatId}`);
     }
   }
 
-  return resolve(event);
+  return await resolve(event);
 }
