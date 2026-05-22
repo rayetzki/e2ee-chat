@@ -19,18 +19,11 @@
     
     socket.onopen = () => {
       console.log('WebSocket connected!');
-      socket?.send('Hello from the client!');
     };
 
     socket.onmessage = async (event: MessageEvent<Blob>) => {
-      const message = await event.data.text();
-      messages.push({
-        message,
-        sender: data.fromConnection.user,
-        chatId: data.chatId,
-        status: MessageType.Pending,
-        timestamp: Date.now(),
-      });
+      const data = JSON.parse(await event.data.text());
+      messages.push(data);
     };
 
     socket.onclose = () => {
@@ -48,28 +41,44 @@
 
   function sendMessage() {
     if (socket?.readyState === WebSocket.OPEN) {
-      socket.send(newMessage);
+      socket.send(JSON.stringify({
+        message: newMessage,
+        senderId: data.sessionId,
+        senderName: data.fromConnection.user_name,
+        timestamp: Date.now(),
+        chatId: data.chatId,
+        status: MessageType.Pending,
+      }));
       newMessage = '';
     }
   }
 </script>
 
-<p>Chat: {data.chatId}</p>
 
-<form method="POST" use:enhance action="?/logout">
-  <Form.Button>Logout</Form.Button>
-</form>
+<nav class="flex w-full flex-row-reverse">
+  <form method="POST" use:enhance action="?/logout" class="p-2">
+    <Form.Button>Вийти</Form.Button>
+  </form>
+</nav>
 
-<Textarea bind:value={newMessage} />
 
-<Button onclick={sendMessage}>Send Message</Button>
-
-<h2>Messages</h2>
-<ul>
+<ul class="flex flex-col">
   {#each messages as msg}
-    <li>
-      <p>{msg.message}</p>
-      <p>{msg.sender}</p>
-    </li>
+    {#if msg.senderId === data.fromConnection.id}
+      <li class="self-end text-right px-4">
+        <p>{msg.message}</p>
+        <p>{msg.senderName}</p>
+      </li>
+    {:else}
+      <li class="self-start text-left px-4">
+        <p>{msg.message}</p>
+        <p>{msg.senderName}</p>
+      </li>
+    {/if}
   {/each}
 </ul>
+
+<section class="absolute gap-2 flex-col flex bottom-0 right-0 left-0 p-2">
+  <Textarea class="" bind:value={newMessage} />
+  <Button class="self-end" onclick={sendMessage}>Send Message</Button>
+</section>

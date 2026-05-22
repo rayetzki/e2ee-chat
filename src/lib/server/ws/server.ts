@@ -11,7 +11,13 @@ export default function(server: ViteDevServer) {
     });
     
     wss.on('connection', (ws) => {
-        ws.on('message', (msg) => ws.send(msg));
+        ws.on('message', (msg) => {
+            wss.clients.forEach((client) => {
+                if (client.readyState === WebSocket.OPEN) {
+                    client.send(msg);
+                }
+            });
+        });
 
         ws.on('error', (error) => {
             console.error(error);

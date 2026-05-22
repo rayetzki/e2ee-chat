@@ -10,8 +10,8 @@ db.exec(`DROP TABLE IF EXISTS connections`);
 db.exec(`
   CREATE TABLE IF NOT EXISTS connections (
     id TEXT PRIMARY KEY NOT NULL,
-    chat_id VARCHAR(10) NOT NULL UNIQUE,
-    user VARCHAR(20) NOT NULL,
+    chat_id VARCHAR(10) NOT NULL,
+    user_name VARCHAR(10) NOT NULL,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
   )
 `);

@@ -1,12 +1,13 @@
 export type Connection = {
     id: string;
     chat_id: string;
-    user: string;
+    user_name: string;
     created_at: string;
 }
 
 export type Message = {
-    sender: string;
+    senderId: string;
+    senderName: string;
     chatId: string;
     message: string;
     status: MessageType;

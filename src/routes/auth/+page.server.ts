@@ -51,7 +51,7 @@ export const actions = {
         });
 
         db.prepare<[string, string, string]>(
-            'INSERT INTO connections (id, chat_id, user) VALUES (?, ?, ?)'
+            'INSERT INTO connections (id, chat_id, user_name) VALUES (?, ?, ?)'
         ).run(sessionId, password?.toString()!, name?.toString()!);
 
         return chatId;

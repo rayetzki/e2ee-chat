@@ -24,7 +24,12 @@ export function load({ cookies, params }) {
         error(404, `You are not connected to the chat`);
     }
 
-    return { fromConnection, toConnection, chatId: fromConnection.chat_id };
+    return { 
+        sessionId,
+        fromConnection,
+        toConnection,
+        chatId: fromConnection.chat_id,
+    };
 }
 
 export const actions = {
