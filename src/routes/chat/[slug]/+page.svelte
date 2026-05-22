@@ -2,58 +2,175 @@
   import * as Form from "$lib/components/ui/form";
   import { enhance } from "$app/forms";
   import type { PageProps } from "./$types";
-  import { onMount, onDestroy } from 'svelte';
+  import { onMount } from 'svelte';
   import { Button } from "$lib/components/ui/button";
   import Textarea from "$lib/components/ui/textarea/textarea.svelte";
-  import { MessageType, type Message } from "../../../types";
-
+  import { MessageType, type EncryptedMessagePayload, type Message, type NetworkPayload, type PublicKeyPayload } from "../../../types";
+  import { decryptText, deriveSharedKey, encryptText, exportPublicKey, generateKeyPair, importPublicKey } from "$lib/crypto";
+  import { loadKeyPairFromStorage, saveKeyPairToStorage } from '$lib/key-storage';
+  
   const { data }: PageProps = $props();
 
   let messages = $state<Message[]>([]);
   let newMessage = $state('');
   let socket: WebSocket | null = null;
+  let sharedKey = $state<CryptoKey | null>(null);
+  let localPublicKeyBase64 = $state('');
+  let status = $state("Чекаю з'єднання і обміну ключами...");
+  let keyPair = $state<CryptoKeyPair | null>(null);
+
+  async function initHandshake() {
+    const storedKeyPair = await loadKeyPairFromStorage(data.chatId);
+    if (storedKeyPair) {
+      keyPair = storedKeyPair;
+      localPublicKeyBase64 = await exportPublicKey(keyPair.publicKey);
+      return;
+    }
+
+    keyPair = await generateKeyPair();
+    localPublicKeyBase64 = await exportPublicKey(keyPair.publicKey);
+    await saveKeyPairToStorage(data.chatId, keyPair);
+  }
+
+  async function sendPublicKey(updateStatus = true) {
+    if (!socket || socket.readyState !== WebSocket.OPEN || !localPublicKeyBase64) {
+      return;
+    }
+
+    const payload: PublicKeyPayload = {
+      type: 'public-key',
+      senderId: data.sessionId,
+      senderName: data.fromConnection.user_name,
+      chatId: data.chatId,
+      publicKey: localPublicKeyBase64,
+      timestamp: Date.now(),
+    };
+
+    socket.send(JSON.stringify(payload));
+    if (updateStatus && !sharedKey) {
+      status = 'Відправлений публічний ключ. Чекаю на співбесідника...';
+    }
+  }
+
+  async function handleRemotePublicKey(payload: PublicKeyPayload) {
+    if (payload.senderId === data.sessionId) {
+      return;
+    }
+
+    if (!keyPair?.privateKey) {
+      status = 'Помилка обміну ключами';
+      return;
+    }
+
+    const remotePublicKey = await importPublicKey(payload.publicKey);
+    sharedKey = await deriveSharedKey(remotePublicKey, keyPair.privateKey);
+    status = 'Обмін ключами успішний';
+
+    if (socket?.readyState === WebSocket.OPEN) {
+      await sendPublicKey(false);
+    }
+  }
+
+  async function handleEncryptedMessage(payload: EncryptedMessagePayload) {
+    if (!sharedKey) {
+      console.warn('Encrypted message received before key exchange.');
+      return;
+    }
+
+    const message = await decryptText(
+      sharedKey,
+      payload.ciphertext,
+      payload.iv
+    );
+
+    messages.push({
+      senderId: payload.senderId,
+      senderName: payload.senderName,
+      chatId: payload.chatId,
+      message,
+      status: MessageType.Pending,
+      timestamp: payload.timestamp,
+    });
+  }
+
+  async function handleSocketMessage(event: MessageEvent) {
+    const raw = typeof event.data === 'string' ? event.data : await event.data.text();
+
+    let payload: NetworkPayload;
+    try {
+      payload = JSON.parse(raw) as NetworkPayload;
+    } catch (error) {
+      console.warn('Received non-JSON socket message', error);
+      return;
+    }
+
+    if (payload.type === 'public-key') {
+      await handleRemotePublicKey(payload);
+      return;
+    }
+
+    if (payload.type === 'message') {
+      await handleEncryptedMessage(payload);
+      return;
+    }
+
+    console.warn('Unknown payload type', payload);
+  }
 
   onMount(() => {
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    socket = new WebSocket(`${protocol}//${window.location.host}/ws`);
-    
-    socket.onopen = () => {
-      console.log('WebSocket connected!');
-    };
+    let ws: WebSocket | null = null;
 
-    socket.onmessage = async (event: MessageEvent<Blob>) => {
-      const data = JSON.parse(await event.data.text());
-      messages.push(data);
-    };
+    void (async () => {
+      await initHandshake();
 
-    socket.onclose = () => {
-      console.log('WebSocket disconnected.');
-    };
+      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      ws = new WebSocket(`${protocol}//${window.location.host}/ws`);
+      socket = ws;
 
-    return () => socket?.close();
+      ws.onopen = async () => {
+        console.log('WebSocket connected!');
+        await sendPublicKey();
+      };
+
+      ws.onmessage = handleSocketMessage;
+
+      ws.onclose = () => {
+        console.log('WebSocket disconnected.');
+        status = "Не в мережі";
+      };
+
+      ws.onerror = (event) => {
+        console.error('WebSocket error', event);
+        status = "Помилка з'єднання";
+      };
+    })();
+
+    return () => ws?.close();
   });
 
-  onDestroy(() => {
-    if (socket) {
-      socket.close();
+  async function sendMessage() {
+    if (!sharedKey) {
+      return;
     }
-  });
 
-  function sendMessage() {
     if (socket?.readyState === WebSocket.OPEN) {
-      socket.send(JSON.stringify({
-        message: newMessage,
+      const encrypted = await encryptText(sharedKey, newMessage);
+
+      const payload: EncryptedMessagePayload = {
+        type: 'message',
         senderId: data.sessionId,
         senderName: data.fromConnection.user_name,
-        timestamp: Date.now(),
         chatId: data.chatId,
-        status: MessageType.Pending,
-      }));
+        ciphertext: encrypted.ciphertext,
+        iv: encrypted.iv,
+        timestamp: Date.now(),
+      };
+
+      socket.send(JSON.stringify(payload));
       newMessage = '';
     }
   }
 </script>
-
 
 <nav class="flex w-full flex-row-reverse">
   <form method="POST" use:enhance action="?/logout" class="p-2">
@@ -61,6 +178,7 @@
   </form>
 </nav>
 
+<p class="mx-4 mb-2 text-sm text-slate-500">{status}</p>
 
 <ul class="flex flex-col">
   {#each messages as msg}
@@ -79,6 +197,6 @@
 </ul>
 
 <section class="absolute gap-2 flex-col flex bottom-0 right-0 left-0 p-2">
-  <Textarea class="" bind:value={newMessage} />
-  <Button class="self-end" onclick={sendMessage}>Send Message</Button>
+  <Textarea class="" bind:value={newMessage} placeholder={sharedKey ? 'Повідомлення' : "Установлюється з'єднання"} />
+  <Button class="self-end" onclick={sendMessage} disabled={!sharedKey || !newMessage.trim()}>Відправити</Button>
 </section>

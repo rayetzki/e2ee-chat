@@ -18,3 +18,24 @@ export enum MessageType {
     Pending,
     Read
 }
+
+export type PublicKeyPayload = {
+    type: 'public-key';
+    senderId: string;
+    senderName: string;
+    chatId: string;
+    publicKey: string;
+    timestamp: number;
+}
+
+export type EncryptedMessagePayload = {
+    type: 'message';
+    senderId: string;
+    senderName: string;
+    chatId: string;
+    ciphertext: string;
+    iv: string;
+    timestamp: number;
+}
+
+export type NetworkPayload = PublicKeyPayload | EncryptedMessagePayload;

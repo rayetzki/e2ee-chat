@@ -1,6 +1,7 @@
 import db from "$lib/server/database";
 import { error, redirect, type Actions } from "@sveltejs/kit";
 import type { Connection } from "../../../types";
+import { removeKeyPairFromStorage } from "$lib/key-storage";
 
 export function load({ cookies, params }) {
     const sessionId = cookies.get('sessionId');
@@ -35,9 +36,11 @@ export function load({ cookies, params }) {
 export const actions = {
     logout: async ({ cookies }) => {
         const sessionId = cookies.get('sessionId');
+        const chatId = cookies.get('chatId');
         cookies.delete('chatId', { path: '/' });
         cookies.delete('sessionId', { path: '/' });
         db.prepare('DELETE FROM connections WHERE id = ?').run(sessionId);
+        removeKeyPairFromStorage(chatId!);
         throw redirect(302, '/auth');
     }
 } satisfies Actions;
