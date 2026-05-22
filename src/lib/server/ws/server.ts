@@ -12,5 +12,10 @@ export default function(server: ViteDevServer) {
     
     wss.on('connection', (ws) => {
         ws.on('message', (msg) => ws.send(msg));
+
+        ws.on('error', (error) => {
+            console.error(error);
+            ws.close();
+        });
     });
 }

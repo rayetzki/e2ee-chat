@@ -1,13 +1,30 @@
 import db from "$lib/server/database";
-import { redirect, type Actions } from "@sveltejs/kit";
+import { error, redirect, type Actions } from "@sveltejs/kit";
 import type { Connection } from "../../../types";
 
-export function load({ cookies }) {
-    const connection = db.prepare<string, Connection>(
-        'SELECT * FROM connections WHERE id = ?'
-    ).get(cookies.get('sessionId')!);
+export function load({ cookies, params }) {
+    const sessionId = cookies.get('sessionId');
 
-    return { connection };
+    if (!sessionId) {
+        error(404, `Session not found for the chat id: ${params.slug}`);
+    }
+
+    const connections = db.prepare<string, Connection>(
+        'SELECT * FROM connections WHERE chat_id = (SELECT chat_id FROM connections WHERE id = ?)'
+    ).all(sessionId);
+
+    if (!connections || connections.length < 1) {
+        error(404, `There is no session found for chat id: ${params.slug}`);
+    }
+
+    const fromConnection = connections.find((connection) => connection.id === sessionId);
+    const toConnection = connections.find((connection) => connection.id !== sessionId);
+
+    if (!fromConnection) {
+        error(404, `You are not connected to the chat`);
+    }
+
+    return { fromConnection, toConnection, chatId: fromConnection.chat_id };
 }
 
 export const actions = {

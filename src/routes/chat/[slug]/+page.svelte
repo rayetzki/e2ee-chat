@@ -5,10 +5,11 @@
   import { onMount, onDestroy } from 'svelte';
   import { Button } from "$lib/components/ui/button";
   import Textarea from "$lib/components/ui/textarea/textarea.svelte";
+  import { MessageType, type Message } from "../../../types";
 
   const { data }: PageProps = $props();
 
-  let messages: string[] = $state([]);
+  let messages = $state<Message[]>([]);
   let newMessage = $state('');
   let socket: WebSocket | null = null;
 
@@ -23,7 +24,13 @@
 
     socket.onmessage = async (event: MessageEvent<Blob>) => {
       const message = await event.data.text();
-      messages.push(message);
+      messages.push({
+        message,
+        sender: data.fromConnection.user,
+        chatId: data.chatId,
+        status: MessageType.Pending,
+        timestamp: Date.now(),
+      });
     };
 
     socket.onclose = () => {
@@ -47,7 +54,7 @@
   }
 </script>
 
-<p>Chat: {data.connection?.name}</p>
+<p>Chat: {data.chatId}</p>
 
 <form method="POST" use:enhance action="?/logout">
   <Form.Button>Logout</Form.Button>
@@ -60,6 +67,9 @@
 <h2>Messages</h2>
 <ul>
   {#each messages as msg}
-    <li>{msg}</li>
+    <li>
+      <p>{msg.message}</p>
+      <p>{msg.sender}</p>
+    </li>
   {/each}
 </ul>

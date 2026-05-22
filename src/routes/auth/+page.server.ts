@@ -3,7 +3,6 @@ import { randomBytes } from 'node:crypto';
 import type { Actions } from './$types';
 import { env } from '$env/dynamic/private';
 import db from '$lib/server/database';
-import { hash } from '$lib/utils';
 
 export const actions = {
 	default: async ({ request, cookies }) => {
@@ -16,8 +15,12 @@ export const actions = {
             errors["name"] = "Ім'я обов'язкове";
         }
 
-        if (!password || !password.toString().trim()) {
-            errors["password"] = "Пароль обов'язковий";
+        if (
+            !password ||
+            !password.toString().trim() ||
+            password?.toString().trim() !== env.SECRET_WORD
+        ) {
+            errors["password"] = "Неправильний пароль";
         }
 
         if (Object.values(errors).some((value) => value)) {
@@ -25,29 +28,32 @@ export const actions = {
         }
 
         const sessionId = randomBytes(32).toString('hex');
+        const isSecure = env.NODE_ENV === 'production' || (request.headers.get('x-forwarded-proto') === 'https');
+        const sessionCookieName = isSecure ? '__Host-sessionId' : 'sessionId';
+        const chatCookieName = isSecure ? '__Host-chatId' : 'chatId';
 
-        cookies.set('sessionId', sessionId, {
+        cookies.set(sessionCookieName, sessionId, {
             path: '/',
             httpOnly: true,
-            secure: env.NODE_ENV === 'production',
+            secure: isSecure,
             sameSite: 'strict',
             maxAge: 60 * 60 * 1,
         });
 
-        const roomHash = hash(password?.toString()!, 6);
+        const chatId = randomBytes(16).toString('hex');
 
-        cookies.set('chatId', roomHash, {
+        cookies.set(chatCookieName, chatId, {
             path: '/',
             httpOnly: true,
-            secure: env.NODE_ENV === 'production',
+            secure: isSecure,
             sameSite: 'strict',
             maxAge: 60 * 60 * 1,
         });
 
-        db.prepare<[string, string]>(
-            'INSERT INTO connections (id, name) VALUES (?, ?)'
-        ).run(sessionId, password?.toString()!);
+        db.prepare<[string, string, string]>(
+            'INSERT INTO connections (id, chat_id, user) VALUES (?, ?, ?)'
+        ).run(sessionId, password?.toString()!, name?.toString()!);
 
-        return roomHash;
+        return chatId;
 	}
 } satisfies Actions;
