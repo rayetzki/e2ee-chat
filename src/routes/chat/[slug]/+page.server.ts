@@ -5,7 +5,9 @@ import { createHash } from 'node:crypto';
 import type { Connection } from "../../../types.js";
 
 export async function load({ cookies, params }) {
-    const sessionId = cookies.get('sessionId');
+    const isSecure = env.NODE_ENV === 'production';
+    const sessionCookieName = isSecure ? '__Host-sessionId' : 'sessionId';
+    const sessionId = cookies.get(sessionCookieName);
 
     if (!sessionId) {
         error(404, `Session not found for the chat id: ${params.slug}`);
@@ -41,10 +43,14 @@ export async function load({ cookies, params }) {
 
 export const actions = {
     logout: async ({ cookies }) => {
-        const sessionId = cookies.get('sessionId');
+        const isSecure = env.NODE_ENV === 'production';
+        const sessionCookieName = isSecure ? '__Host-sessionId' : 'sessionId';
+        const chatCookieName = isSecure ? '__Host-chatId' : 'chatId';
+        const sessionId = cookies.get(sessionCookieName);
+
         if (sessionId) {
-            cookies.delete('chatId', { path: '/' });
-            cookies.delete('sessionId', { path: '/' });
+            cookies.delete(sessionCookieName, { path: '/' });
+            cookies.delete(chatCookieName, { path: '/' });
             await db.execute('DELETE FROM connections WHERE id = ?', [sessionId!]);
         }
     }
