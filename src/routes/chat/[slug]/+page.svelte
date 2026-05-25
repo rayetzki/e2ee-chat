@@ -20,10 +20,10 @@
   let status = $state("Чекаю з'єднання і обміну ключами...");
   let keyPair = $state<CryptoKeyPair | null>(null);
   let messageListEl: HTMLDivElement | null = null;
-  let handshakeTimeout: ReturnType<typeof setTimeout> | null = null;
   let handshakeInterval: ReturnType<typeof setInterval> | null = null;
   let handshakeAttempts = $state(0);
   const MAX_HANDSHAKE_ATTEMPTS = 5;
+  const HANDSHAKE_RETRY_MS = 2000;
   let ephemeralKeyPair: CryptoKeyPair | null = null;
   let ephemeralPublicKeyBase64 = '';
   let rekeyTimer: ReturnType<typeof setInterval> | null = null;
@@ -79,10 +79,6 @@
   }
 
   function clearHandshakeTimers() {
-    if (handshakeTimeout) {
-      clearTimeout(handshakeTimeout);
-      handshakeTimeout = null;
-    }
     if (handshakeInterval) {
       clearInterval(handshakeInterval);
       handshakeInterval = null;
@@ -94,27 +90,23 @@
     clearHandshakeTimers();
     await generateEphemeralKey();
 
-    setTimeout(async () => {
-      await getPublicKey();
-    }, 2000);
+    await sendPublicKey();
 
-    handshakeTimeout = setTimeout(async () => {
-      if (!sharedKey) {
-        await sendPublicKey();
-
-        handshakeInterval = setInterval(async () => {
-          handshakeAttempts += 1;
-          if (sharedKey || handshakeAttempts >= MAX_HANDSHAKE_ATTEMPTS) {
-            if (!sharedKey) {
-              status = "Не вдалося встановити захищене з'єднання. Оновіть сторінку або спробуйте пізніше.";
-            }
-            clearHandshakeTimers();
-            return;
-          }
-          await getPublicKey();
-        }, 2000);
+    handshakeInterval = setInterval(async () => {
+      if (sharedKey) {
+        clearHandshakeTimers();
+        return;
       }
-    }, 300);
+
+      handshakeAttempts += 1;
+      if (handshakeAttempts >= MAX_HANDSHAKE_ATTEMPTS) {
+        status = "Не вдалося встановити захищене з'єднання. Оновіть сторінку або спробуйте пізніше.";
+        clearHandshakeTimers();
+        return;
+      }
+
+      await getPublicKey();
+    }, HANDSHAKE_RETRY_MS);
 
     if (rekeyTimer) clearInterval(rekeyTimer);
     rekeyTimer = setInterval(async () => {
@@ -239,9 +231,9 @@
 
       const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
       ws = new WebSocket(`${protocol}//${window.location.host}/ws`);
-      socket = ws;
-
+      
       ws.onopen = async () => {
+        socket = ws;
         console.log('WebSocket connected!');
         status = "З'єднання встановлено. Обмін ключами...";
         await startHandshakeSequence();
