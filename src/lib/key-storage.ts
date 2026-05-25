@@ -1,18 +1,18 @@
 import { exportPrivateKey, exportPublicKey, importPrivateKey, importPublicKey } from "./crypto";
 
-const STORAGE_PREFIX = 'e2ee-keypair-';
+export const STORAGE_PREFIX = 'e2ee-keypair-';
 
 export async function saveKeyPairToStorage(chatId: string, keyPair: CryptoKeyPair) {
   const publicKey = await exportPublicKey(keyPair.publicKey);
   const privateKey = await exportPrivateKey(keyPair.privateKey);
-  localStorage.setItem(
+  window.localStorage.setItem(
     `${STORAGE_PREFIX}${chatId}`,
     JSON.stringify({ publicKey, privateKey })
   );
 }
 
 export async function loadKeyPairFromStorage(chatId: string) {
-  const stored = localStorage.getItem(`${STORAGE_PREFIX}${chatId}`);
+  const stored = window.localStorage.getItem(`${STORAGE_PREFIX}${chatId}`);
   if (!stored) {
     return null;
   }
@@ -24,11 +24,7 @@ export async function loadKeyPairFromStorage(chatId: string) {
     return { publicKey, privateKey } as CryptoKeyPair;
   } catch (error) {
     console.warn('Failed to load stored key pair', error);
-    localStorage.removeItem(`${STORAGE_PREFIX}${chatId}`);
+    window.localStorage.removeItem(`${STORAGE_PREFIX}${chatId}`);
     return null;
   }
-}
-
-export function removeKeyPairFromStorage(chatId: string) {
-  localStorage.removeItem(`${STORAGE_PREFIX}${chatId}`);
 }

@@ -1,7 +1,7 @@
 import db from "$lib/server/database";
 import { error, redirect, type Actions } from "@sveltejs/kit";
 import type { Connection } from "../../../types";
-import { removeKeyPairFromStorage } from "$lib/key-storage";
+import { STORAGE_PREFIX } from "$lib/key-storage";
 
 export function load({ cookies, params }) {
     const sessionId = cookies.get('sessionId');
@@ -40,7 +40,7 @@ export const actions = {
         cookies.delete('chatId', { path: '/' });
         cookies.delete('sessionId', { path: '/' });
         db.prepare('DELETE FROM connections WHERE id = ?').run(sessionId);
-        removeKeyPairFromStorage(chatId!);
+        localStorage.removeItem(`${STORAGE_PREFIX}${chatId}`);
         throw redirect(302, '/auth');
     }
 } satisfies Actions;

@@ -19,8 +19,17 @@ export enum MessageType {
     Read
 }
 
-export type PublicKeyPayload = {
-    type: 'public-key';
+export type GetPublicKeyPayload = {
+    type: 'get-public-key';
+    senderId: string;
+    senderName: string;
+    chatId: string;
+    publicKey: string;
+    timestamp: number;
+}
+
+export type SendPublicKeyPayload = {
+    type: 'send-public-key';
     senderId: string;
     senderName: string;
     chatId: string;
@@ -38,4 +47,4 @@ export type EncryptedMessagePayload = {
     timestamp: number;
 }
 
-export type NetworkPayload = PublicKeyPayload | EncryptedMessagePayload;
+export type NetworkPayload = GetPublicKeyPayload | SendPublicKeyPayload | EncryptedMessagePayload;

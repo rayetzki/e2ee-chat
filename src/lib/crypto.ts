@@ -1,4 +1,3 @@
-
 export function arrayBufferToBase64(buffer: ArrayBuffer | Uint8Array) {
   const bytes = buffer instanceof ArrayBuffer ? new Uint8Array(buffer) : buffer;
   const chunkSize = 0x8000;
@@ -23,7 +22,7 @@ export function base64ToArrayBuffer(base64: string) {
 }
 
 export async function generateKeyPair() {
-  return crypto.subtle.generateKey(
+  return await window.crypto.subtle.generateKey(
     {
       name: 'ECDH',
       namedCurve: 'P-256',
@@ -34,12 +33,12 @@ export async function generateKeyPair() {
 }
 
 export async function exportPublicKey(publicKey: CryptoKey) {
-  const raw = await crypto.subtle.exportKey('spki', publicKey);
+  const raw = await window.crypto.subtle.exportKey('spki', publicKey);
   return arrayBufferToBase64(raw);
 }
 
 export async function importPublicKey(publicKeyBase64: string) {
-  return crypto.subtle.importKey(
+  return await window.crypto.subtle.importKey(
     'spki',
     base64ToArrayBuffer(publicKeyBase64),
     {
@@ -52,12 +51,12 @@ export async function importPublicKey(publicKeyBase64: string) {
 }
 
 export async function exportPrivateKey(privateKey: CryptoKey) {
-  const raw = await crypto.subtle.exportKey('pkcs8', privateKey);
+  const raw = await window.crypto.subtle.exportKey('pkcs8', privateKey);
   return arrayBufferToBase64(raw);
 }
 
 export async function importPrivateKey(privateKeyBase64: string) {
-  return crypto.subtle.importKey(
+  return await window.crypto.subtle.importKey(
     'pkcs8',
     base64ToArrayBuffer(privateKeyBase64),
     {
@@ -70,7 +69,7 @@ export async function importPrivateKey(privateKeyBase64: string) {
 }
 
 export async function deriveSharedKey(remotePublicKey: CryptoKey, privateKey: CryptoKey) {
-  return crypto.subtle.deriveKey(
+  return await window.crypto.subtle.deriveKey(
     {
       name: 'ECDH',
       public: remotePublicKey,
@@ -86,9 +85,9 @@ export async function deriveSharedKey(remotePublicKey: CryptoKey, privateKey: Cr
 }
 
 export async function encryptText(sharedKey: CryptoKey, plainText: string) {
-  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const iv = window.crypto.getRandomValues(new Uint8Array(12));
   const encoded = new TextEncoder().encode(plainText);
-  const ciphertext = await crypto.subtle.encrypt(
+  const ciphertext = await window.crypto.subtle.encrypt(
     { name: 'AES-GCM', iv },
     sharedKey,
     encoded
@@ -103,7 +102,7 @@ export async function encryptText(sharedKey: CryptoKey, plainText: string) {
 export async function decryptText(sharedKey: CryptoKey, ciphertextBase64: string, ivBase64: string) {
   const ciphertext = base64ToArrayBuffer(ciphertextBase64);
   const iv = new Uint8Array(base64ToArrayBuffer(ivBase64));
-  const decrypted = await crypto.subtle.decrypt(
+  const decrypted = await window.crypto.subtle.decrypt(
     { name: 'AES-GCM', iv },
     sharedKey,
     ciphertext

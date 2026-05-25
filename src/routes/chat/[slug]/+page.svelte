@@ -5,7 +5,7 @@
   import { onMount } from 'svelte';
   import { Button } from "$lib/components/ui/button";
   import Textarea from "$lib/components/ui/textarea/textarea.svelte";
-  import { MessageType, type EncryptedMessagePayload, type Message, type NetworkPayload, type PublicKeyPayload } from "../../../types";
+  import { MessageType, type EncryptedMessagePayload, type Message, type NetworkPayload, type SendPublicKeyPayload, type GetPublicKeyPayload } from "../../../types";
   import { decryptText, deriveSharedKey, encryptText, exportPublicKey, generateKeyPair, importPublicKey } from "$lib/crypto";
   import { loadKeyPairFromStorage, saveKeyPairToStorage } from '$lib/key-storage';
   
@@ -18,27 +18,81 @@
   let localPublicKeyBase64 = $state('');
   let status = $state("Чекаю з'єднання і обміну ключами...");
   let keyPair = $state<CryptoKeyPair | null>(null);
+  let handshakeTimeout: ReturnType<typeof setTimeout> | null = null;
+  let handshakeInterval: ReturnType<typeof setInterval> | null = null;
+  let handshakeAttempts = $state(0);
+  const MAX_HANDSHAKE_ATTEMPTS = 5;
 
   async function initHandshake() {
     const storedKeyPair = await loadKeyPairFromStorage(data.chatId);
-    if (storedKeyPair) {
-      keyPair = storedKeyPair;
-      localPublicKeyBase64 = await exportPublicKey(keyPair.publicKey);
-      return;
-    }
-
-    keyPair = await generateKeyPair();
+    keyPair = storedKeyPair ?? await generateKeyPair();
     localPublicKeyBase64 = await exportPublicKey(keyPair.publicKey);
-    await saveKeyPairToStorage(data.chatId, keyPair);
+    
+    if (!storedKeyPair) {
+      await saveKeyPairToStorage(data.chatId, keyPair);
+    }
   }
 
-  async function sendPublicKey(updateStatus = true) {
+  async function getPublicKey() {
     if (!socket || socket.readyState !== WebSocket.OPEN || !localPublicKeyBase64) {
       return;
     }
 
-    const payload: PublicKeyPayload = {
-      type: 'public-key',
+    const payload: GetPublicKeyPayload = {
+      type: 'get-public-key',
+      senderId: data.sessionId,
+      senderName: data.fromConnection.user_name,
+      chatId: data.chatId,
+      publicKey: localPublicKeyBase64,
+      timestamp: Date.now(),
+    }
+
+    socket.send(JSON.stringify(payload));
+
+    if (!sharedKey) {
+      status = 'Запитано публічний ключ співбесідника...';
+    }
+  }
+
+  function clearHandshakeTimers() {
+    if (handshakeTimeout) {
+      clearTimeout(handshakeTimeout);
+      handshakeTimeout = null;
+    }
+    if (handshakeInterval) {
+      clearInterval(handshakeInterval);
+      handshakeInterval = null;
+    }
+    handshakeAttempts = 0;
+  }
+
+  async function startHandshakeSequence() {
+    clearHandshakeTimers();
+    await getPublicKey();
+
+    handshakeTimeout = setTimeout(async () => {
+      if (!sharedKey) {
+        await sendPublicKey();
+
+        handshakeInterval = setInterval(async () => {
+          handshakeAttempts += 1;
+          if (sharedKey || handshakeAttempts > MAX_HANDSHAKE_ATTEMPTS) {
+            clearHandshakeTimers();
+            return;
+          }
+          await getPublicKey();
+        }, 2000);
+      }
+    }, 300);
+  }
+
+  async function sendPublicKey() {
+    if (!socket || socket.readyState !== WebSocket.OPEN || !localPublicKeyBase64) {
+      return;
+    }
+
+    const payload: SendPublicKeyPayload = {
+      type: 'send-public-key',
       senderId: data.sessionId,
       senderName: data.fromConnection.user_name,
       chatId: data.chatId,
@@ -47,12 +101,13 @@
     };
 
     socket.send(JSON.stringify(payload));
-    if (updateStatus && !sharedKey) {
+  
+    if (!sharedKey) {
       status = 'Відправлений публічний ключ. Чекаю на співбесідника...';
     }
   }
 
-  async function handleRemotePublicKey(payload: PublicKeyPayload) {
+  async function handleRemotePublicKey(payload: SendPublicKeyPayload) {
     if (payload.senderId === data.sessionId) {
       return;
     }
@@ -66,9 +121,7 @@
     sharedKey = await deriveSharedKey(remotePublicKey, keyPair.privateKey);
     status = 'Обмін ключами успішний';
 
-    if (socket?.readyState === WebSocket.OPEN) {
-      await sendPublicKey(false);
-    }
+    clearHandshakeTimers();
   }
 
   async function handleEncryptedMessage(payload: EncryptedMessagePayload) {
@@ -104,7 +157,16 @@
       return;
     }
 
-    if (payload.type === 'public-key') {
+    if (payload.type === 'get-public-key') {
+      // someone is requesting cached public keys for this chat - respond with our public key
+      const req = payload as GetPublicKeyPayload;
+      if (req.senderId !== data.sessionId && !sharedKey) {
+        await sendPublicKey();
+      }
+      return;
+    }
+
+    if (payload.type === 'send-public-key') {
       await handleRemotePublicKey(payload);
       return;
     }
@@ -129,14 +191,14 @@
 
       ws.onopen = async () => {
         console.log('WebSocket connected!');
-        await sendPublicKey();
+        await startHandshakeSequence();
       };
 
       ws.onmessage = handleSocketMessage;
-
       ws.onclose = () => {
         console.log('WebSocket disconnected.');
         status = "Не в мережі";
+        clearHandshakeTimers();
       };
 
       ws.onerror = (event) => {
@@ -179,6 +241,9 @@
 </nav>
 
 <p class="mx-4 mb-2 text-sm text-slate-500">{status}</p>
+{#if handshakeAttempts}
+  <p class="mx-4 mb-2 text-xs text-slate-400">Retry attempts: {handshakeAttempts}/{MAX_HANDSHAKE_ATTEMPTS}</p>
+{/if}
 
 <ul class="flex flex-col">
   {#each messages as msg}
