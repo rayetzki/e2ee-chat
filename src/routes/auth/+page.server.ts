@@ -3,6 +3,7 @@ import { randomBytes } from 'node:crypto';
 import type { Actions } from './$types';
 import { env } from '$env/dynamic/private';
 import db from '$lib/server/database';
+import { hashText } from '$lib/crypto';
 
 export const actions = {
 	default: async ({ request, cookies }) => {
@@ -40,9 +41,9 @@ export const actions = {
             maxAge: 60 * 60 * 1,
         });
 
-        const chatId = randomBytes(16).toString('hex');
+        const hashedChatId = await hashText(password?.toString()!);
 
-        cookies.set(chatCookieName, chatId, {
+        cookies.set(chatCookieName, hashedChatId, {
             path: '/',
             httpOnly: true,
             secure: isSecure,
@@ -54,6 +55,6 @@ export const actions = {
             'INSERT INTO connections (id, chat_id, user_name) VALUES (?, ?, ?)'
         ).run(sessionId, password?.toString()!, name?.toString()!);
 
-        return chatId;
+        return hashedChatId;
 	}
 } satisfies Actions;

@@ -1,7 +1,8 @@
 import db from "$lib/server/database";
-import { error, redirect, type Actions } from "@sveltejs/kit";
+import { error, type Actions } from "@sveltejs/kit";
 import type { Connection } from "../../../types";
-import { STORAGE_PREFIX } from "$lib/key-storage";
+import { env } from '$env/dynamic/private';
+import { createHash } from 'crypto';
 
 export function load({ cookies, params }) {
     const sessionId = cookies.get('sessionId');
@@ -25,22 +26,23 @@ export function load({ cookies, params }) {
         error(404, `You are not connected to the chat`);
     }
 
-    return { 
+    const secret = env['CHAT_SALT_SECRET'] || 'dev-default-salt';
+    const saltBase64 = createHash('sha256').update(`${fromConnection.chat_id}|${secret}`).digest('base64');
+
+    return {
         sessionId,
         fromConnection,
         toConnection,
         chatId: fromConnection.chat_id,
+        salt: saltBase64,
     };
 }
 
 export const actions = {
     logout: async ({ cookies }) => {
         const sessionId = cookies.get('sessionId');
-        const chatId = cookies.get('chatId');
         cookies.delete('chatId', { path: '/' });
         cookies.delete('sessionId', { path: '/' });
         db.prepare('DELETE FROM connections WHERE id = ?').run(sessionId);
-        localStorage.removeItem(`${STORAGE_PREFIX}${chatId}`);
-        throw redirect(302, '/auth');
     }
 } satisfies Actions;

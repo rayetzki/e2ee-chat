@@ -25,6 +25,7 @@ export type GetPublicKeyPayload = {
     senderName: string;
     chatId: string;
     publicKey: string;
+    ephemeralPublicKey?: string | undefined;
     timestamp: number;
 }
 
@@ -34,6 +35,7 @@ export type SendPublicKeyPayload = {
     senderName: string;
     chatId: string;
     publicKey: string;
+    ephemeralPublicKey?: string | undefined;
     timestamp: number;
 }
 

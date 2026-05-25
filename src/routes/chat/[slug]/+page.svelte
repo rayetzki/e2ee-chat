@@ -6,22 +6,40 @@
   import { Button } from "$lib/components/ui/button";
   import Textarea from "$lib/components/ui/textarea/textarea.svelte";
   import { MessageType, type EncryptedMessagePayload, type Message, type NetworkPayload, type SendPublicKeyPayload, type GetPublicKeyPayload } from "../../../types";
-  import { decryptText, deriveSharedKey, encryptText, exportPublicKey, generateKeyPair, importPublicKey } from "$lib/crypto";
-  import { loadKeyPairFromStorage, saveKeyPairToStorage } from '$lib/key-storage';
+  import { decryptText, deriveSharedKey, encryptText, exportPublicKey, generateKeyPair, importPublicKey, base64ToArrayBuffer } from "$lib/crypto";
+  import { loadKeyPairFromStorage, saveKeyPairToStorage, cleanupClientStorage } from '$lib/key-storage';
+  import { goto } from "$app/navigation";
   
   const { data }: PageProps = $props();
 
   let messages = $state<Message[]>([]);
   let newMessage = $state('');
-  let socket: WebSocket | null = null;
+  let socket = $state<WebSocket | null>(null);
   let sharedKey = $state<CryptoKey | null>(null);
   let localPublicKeyBase64 = $state('');
   let status = $state("Чекаю з'єднання і обміну ключами...");
   let keyPair = $state<CryptoKeyPair | null>(null);
+  let messageListEl: HTMLDivElement | null = null;
   let handshakeTimeout: ReturnType<typeof setTimeout> | null = null;
   let handshakeInterval: ReturnType<typeof setInterval> | null = null;
   let handshakeAttempts = $state(0);
   const MAX_HANDSHAKE_ATTEMPTS = 5;
+  let ephemeralKeyPair: CryptoKeyPair | null = null;
+  let ephemeralPublicKeyBase64 = '';
+  let rekeyTimer: ReturnType<typeof setInterval> | null = null;
+  const REKEY_INTERVAL_MS = 1000 * 60 * 10; // 10 minutes
+
+  function scrollToBottom() {
+    if (!messageListEl) return;
+    messageListEl.scrollTo({ top: messageListEl.scrollHeight, behavior: 'smooth' });
+  }
+
+  async function handleMessageKeydown(event: KeyboardEvent) {
+    if (event.key === 'Enter' && !event.shiftKey) {
+      event.preventDefault();
+      await sendMessage();
+    }
+  }
 
   async function initHandshake() {
     const storedKeyPair = await loadKeyPairFromStorage(data.chatId);
@@ -31,6 +49,11 @@
     if (!storedKeyPair) {
       await saveKeyPairToStorage(data.chatId, keyPair);
     }
+  }
+
+  async function generateEphemeralKey() {
+    ephemeralKeyPair = await generateKeyPair();
+    ephemeralPublicKeyBase64 = await exportPublicKey(ephemeralKeyPair.publicKey);
   }
 
   async function getPublicKey() {
@@ -44,6 +67,7 @@
       senderName: data.fromConnection.user_name,
       chatId: data.chatId,
       publicKey: localPublicKeyBase64,
+      ephemeralPublicKey: ephemeralPublicKeyBase64 || undefined,
       timestamp: Date.now(),
     }
 
@@ -68,7 +92,11 @@
 
   async function startHandshakeSequence() {
     clearHandshakeTimers();
-    await getPublicKey();
+    await generateEphemeralKey();
+
+    setTimeout(async () => {
+      await getPublicKey();
+    }, 2000);
 
     handshakeTimeout = setTimeout(async () => {
       if (!sharedKey) {
@@ -76,7 +104,10 @@
 
         handshakeInterval = setInterval(async () => {
           handshakeAttempts += 1;
-          if (sharedKey || handshakeAttempts > MAX_HANDSHAKE_ATTEMPTS) {
+          if (sharedKey || handshakeAttempts >= MAX_HANDSHAKE_ATTEMPTS) {
+            if (!sharedKey) {
+              status = "Не вдалося встановити захищене з'єднання. Оновіть сторінку або спробуйте пізніше.";
+            }
             clearHandshakeTimers();
             return;
           }
@@ -84,6 +115,14 @@
         }, 2000);
       }
     }, 300);
+
+    if (rekeyTimer) clearInterval(rekeyTimer);
+    rekeyTimer = setInterval(async () => {
+      await generateEphemeralKey();
+      if (socket?.readyState === WebSocket.OPEN) {
+        await sendPublicKey();
+      }
+    }, REKEY_INTERVAL_MS);
   }
 
   async function sendPublicKey() {
@@ -97,6 +136,7 @@
       senderName: data.fromConnection.user_name,
       chatId: data.chatId,
       publicKey: localPublicKeyBase64,
+      ephemeralPublicKey: ephemeralPublicKeyBase64 || undefined,
       timestamp: Date.now(),
     };
 
@@ -117,11 +157,22 @@
       return;
     }
 
-    const remotePublicKey = await importPublicKey(payload.publicKey);
-    sharedKey = await deriveSharedKey(remotePublicKey, keyPair.privateKey);
+    const remoteKeyBase64 = payload.ephemeralPublicKey ?? payload.publicKey;
+    const remotePublicKey = await importPublicKey(remoteKeyBase64);
+    const privateKeyToUse = payload.ephemeralPublicKey ? ephemeralKeyPair?.privateKey : keyPair.privateKey;
+    if (!privateKeyToUse) {
+      status = 'Помилка обміну ключами';
+      return;
+    }
+
+    const ids = [data.sessionId, payload.senderId].sort().join(':');
+    const info = `${data.chatId}:${ids}`;
+    const saltBuf = data.salt ? base64ToArrayBuffer(data.salt) : undefined;
+    sharedKey = await deriveSharedKey(remotePublicKey, privateKeyToUse, info, saltBuf);
     status = 'Обмін ключами успішний';
 
     clearHandshakeTimers();
+    scrollToBottom();
   }
 
   async function handleEncryptedMessage(payload: EncryptedMessagePayload) {
@@ -144,6 +195,8 @@
       status: MessageType.Pending,
       timestamp: payload.timestamp,
     });
+
+    scrollToBottom();
   }
 
   async function handleSocketMessage(event: MessageEvent) {
@@ -158,7 +211,6 @@
     }
 
     if (payload.type === 'get-public-key') {
-      // someone is requesting cached public keys for this chat - respond with our public key
       const req = payload as GetPublicKeyPayload;
       if (req.senderId !== data.sessionId && !sharedKey) {
         await sendPublicKey();
@@ -191,6 +243,7 @@
 
       ws.onopen = async () => {
         console.log('WebSocket connected!');
+        status = "З'єднання встановлено. Обмін ключами...";
         await startHandshakeSequence();
       };
 
@@ -211,9 +264,7 @@
   });
 
   async function sendMessage() {
-    if (!sharedKey) {
-      return;
-    }
+    if (!sharedKey) return;
 
     if (socket?.readyState === WebSocket.OPEN) {
       const encrypted = await encryptText(sharedKey, newMessage);
@@ -230,12 +281,23 @@
 
       socket.send(JSON.stringify(payload));
       newMessage = '';
+      scrollToBottom();
     }
   }
 </script>
 
 <nav class="flex w-full flex-row-reverse">
-  <form method="POST" use:enhance action="?/logout" class="p-2">
+  <form
+    action="?/logout"
+    class="p-2"
+    method="POST"
+    use:enhance={() => {
+      return async () => {
+        await cleanupClientStorage(data.chatId);
+        await goto('/auth');
+      }
+    }}
+  >
     <Form.Button>Вийти</Form.Button>
   </form>
 </nav>
@@ -244,24 +306,45 @@
 {#if handshakeAttempts}
   <p class="mx-4 mb-2 text-xs text-slate-400">Retry attempts: {handshakeAttempts}/{MAX_HANDSHAKE_ATTEMPTS}</p>
 {/if}
+{#if handshakeAttempts >= MAX_HANDSHAKE_ATTEMPTS && !sharedKey}
+  <p class="mx-4 mb-2 text-xs text-rose-400">Не вдалося завершити ключовий обмін. Перезавантажте сторінку або спробуйте пізніше.</p>
+{/if}
 
-<ul class="flex flex-col">
-  {#each messages as msg}
+<div class="overflow-y-auto px-4 pb-36 pt-2 min-h-[50vh]" bind:this={messageListEl}>
+  <ul class="flex flex-col gap-3">
+    {#each messages as msg}
     {#if msg.senderId === data.fromConnection.id}
-      <li class="self-end text-right px-4">
-        <p>{msg.message}</p>
-        <p>{msg.senderName}</p>
+      <li class="self-end px-4">
+        <div class="inline-block rounded-3xl bg-sky-500/10 px-4 py-3 text-right text-slate-900 shadow-sm ring-1 ring-slate-200">
+          <p class="whitespace-pre-wrap">{msg.message}</p>
+          <p class="mt-1 text-xs text-slate-500">{msg.senderName}</p>
+        </div>
       </li>
     {:else}
-      <li class="self-start text-left px-4">
-        <p>{msg.message}</p>
-        <p>{msg.senderName}</p>
+      <li class="self-start px-4">
+        <div class="inline-block rounded-3xl bg-slate-900/90 px-4 py-3 text-left text-slate-100 shadow-sm">
+          <p class="whitespace-pre-wrap">{msg.message}</p>
+          <p class="mt-1 text-xs text-slate-400">{msg.senderName}</p>
+        </div>
       </li>
     {/if}
   {/each}
 </ul>
+</div>
 
-<section class="absolute gap-2 flex-col flex bottom-0 right-0 left-0 p-2">
-  <Textarea class="" bind:value={newMessage} placeholder={sharedKey ? 'Повідомлення' : "Установлюється з'єднання"} />
-  <Button class="self-end" onclick={sendMessage} disabled={!sharedKey || !newMessage.trim()}>Відправити</Button>
+<section class="fixed bottom-0 right-0 left-0 p-3 border-t border-slate-700 backdrop-blur">
+  <Textarea
+    class="min-h-[92px]"
+    bind:value={newMessage}
+    placeholder={socket?.readyState === WebSocket.OPEN ? (sharedKey ? 'Повідомлення' : 'Очікування ключа...') : "Установлюється з’єднання"}
+    disabled={!sharedKey || socket?.readyState !== WebSocket.OPEN}
+    onkeydown={handleMessageKeydown}
+  />
+  <Button
+    class="self-end mt-2"
+    onclick={sendMessage}
+    disabled={!sharedKey || !newMessage.trim() || socket?.readyState !== WebSocket.OPEN}
+  >
+    Відправити
+  </Button>
 </section>
