@@ -324,7 +324,7 @@
 </ul>
 </div>
 
-<section class="fixed bottom-0 right-0 left-0 p-3 border-t border-slate-700 backdrop-blur">
+<section class="fixed bottom-0 right-0 left-0 px-3 pb-3 backdrop-blur">
   <Textarea
     class="min-h-[92px]"
     bind:value={newMessage}

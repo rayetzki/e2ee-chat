@@ -1,26 +1,27 @@
 import db from "$lib/server/database";
 import { error, type Actions } from "@sveltejs/kit";
-import type { Connection } from "../../../types";
 import { env } from '$env/dynamic/private';
-import { createHash } from 'crypto';
+import { createHash } from 'node:crypto';
+import type { Connection } from "../../../types.js";
 
-export function load({ cookies, params }) {
+export async function load({ cookies, params }) {
     const sessionId = cookies.get('sessionId');
 
     if (!sessionId) {
         error(404, `Session not found for the chat id: ${params.slug}`);
     }
 
-    const connections = db.prepare<string, Connection>(
-        'SELECT * FROM connections WHERE chat_id = (SELECT chat_id FROM connections WHERE id = ?)'
-    ).all(sessionId);
+    const connections = await db.execute(
+        'SELECT * FROM connections WHERE chat_id = (SELECT chat_id FROM connections WHERE id = ?)',
+        [sessionId],
+    );
 
-    if (!connections || connections.length < 1) {
+    if (!connections || connections.rows.length < 1) {
         error(404, `There is no session found for chat id: ${params.slug}`);
     }
 
-    const fromConnection = connections.find((connection) => connection.id === sessionId);
-    const toConnection = connections.find((connection) => connection.id !== sessionId);
+    const fromConnection = connections.rows.find((connection) => connection['id'] === sessionId) as unknown as Connection;
+    const toConnection = connections.rows.find((connection) => connection['id'] !== sessionId) as unknown as Connection;
 
     if (!fromConnection) {
         error(404, `You are not connected to the chat`);
@@ -41,8 +42,10 @@ export function load({ cookies, params }) {
 export const actions = {
     logout: async ({ cookies }) => {
         const sessionId = cookies.get('sessionId');
-        cookies.delete('chatId', { path: '/' });
-        cookies.delete('sessionId', { path: '/' });
-        db.prepare('DELETE FROM connections WHERE id = ?').run(sessionId);
+        if (sessionId) {
+            cookies.delete('chatId', { path: '/' });
+            cookies.delete('sessionId', { path: '/' });
+            await db.execute('DELETE FROM connections WHERE id = ?', [sessionId!]);
+        }
     }
 } satisfies Actions;
