@@ -13,17 +13,16 @@ export async function load({ cookies, params }) {
         error(404, `Session not found for the chat id: ${params.slug}`);
     }
 
-    const connections = await db.execute(
-        'SELECT * FROM connections WHERE chat_id = (SELECT chat_id FROM connections WHERE id = ?)',
-        [sessionId],
-    );
+    const connections = db.prepare<string, Connection[]>(
+        'SELECT * FROM connections WHERE chat_id = (SELECT chat_id FROM connections WHERE id = ?)'
+    ).get(sessionId);
 
-    if (!connections || connections.rows.length < 1) {
+    if (!connections || connections.length < 1) {
         error(404, `There is no session found for chat id: ${params.slug}`);
     }
 
-    const fromConnection = connections.rows.find((connection) => connection['id'] === sessionId) as unknown as Connection;
-    const toConnection = connections.rows.find((connection) => connection['id'] !== sessionId) as unknown as Connection;
+    const fromConnection = connections.find((connection) => connection.id === sessionId);
+    const toConnection = connections.find((connection) => connection.id !== sessionId);
 
     if (!fromConnection) {
         error(404, `You are not connected to the chat`);
@@ -51,7 +50,7 @@ export const actions = {
         if (sessionId) {
             cookies.delete(sessionCookieName, { path: '/' });
             cookies.delete(chatCookieName, { path: '/' });
-            await db.execute('DELETE FROM connections WHERE id = ?', [sessionId!]);
+            db.prepare('DELETE FROM connections WHERE id = ?').run(sessionId);
         }
     }
 } satisfies Actions;

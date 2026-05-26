@@ -1,14 +1,13 @@
 import { env } from '$env/dynamic/private';
-import { createClient } from "@libsql/client";
+import Database from "better-sqlite3";
 
-const db = createClient({
-  url: env.TURSO_DATABASE_URL,
-  authToken: env.TURSO_AUTH_TOKEN
+const db = new Database(env.DB_URL || 'local.db', {
+  verbose: env.NODE_ENV !== 'production' ? console.log : undefined,
 });
 
-await db.execute(`DROP TABLE IF EXISTS connections`);
+db.exec(`DROP TABLE IF EXISTS connections`);
 
-await db.execute(`
+db.exec(`
   CREATE TABLE IF NOT EXISTS connections (
     id TEXT PRIMARY KEY NOT NULL,
     chat_id VARCHAR(10) NOT NULL,

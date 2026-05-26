@@ -51,10 +51,9 @@ export const actions = {
             maxAge: 60 * 60 * 1,
         });
 
-        await db.execute(
-            'INSERT INTO connections (id, chat_id, user_name) VALUES (?, ?, ?)',
-            [sessionId, password?.toString()!, name?.toString()!]
-        );
+        db.prepare<[string, string, string]>(
+            'INSERT INTO connections (id, chat_id, user_name) VALUES (?, ?, ?)'
+        ).run(sessionId, password?.toString()!, name?.toString()!);
 
         return hashedChatId;
 	}
