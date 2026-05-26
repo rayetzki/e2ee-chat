@@ -13,9 +13,9 @@ export async function load({ cookies, params }) {
         error(404, `Session not found for the chat id: ${params.slug}`);
     }
 
-    const connections = db.prepare<string, Connection[]>(
+    const connections = db.prepare<string, Connection>(
         'SELECT * FROM connections WHERE chat_id = (SELECT chat_id FROM connections WHERE id = ?)'
-    ).get(sessionId);
+    ).all(sessionId);
 
     if (!connections || connections.length < 1) {
         error(404, `There is no session found for chat id: ${params.slug}`);
