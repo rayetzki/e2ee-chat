@@ -8,8 +8,8 @@
   import { Button } from "$lib/components/ui/button";
   import type { PageProps } from './$types';
   import { enhance } from "$app/forms";
-  import { goto } from "$app/navigation";
-  import { base, resolve } from "$app/paths";
+  // import { goto } from "$app/navigation";
+  // import { resolve } from "$app/paths";
 
 	let { form }: PageProps = $props();
 </script>
@@ -20,8 +20,7 @@
       const chatId = result.data?.['id'] || result.data; 
       
       if (chatId) {
-        const chatRoomUrl = resolve(`/chat/${chatId}`);
-        await goto(chatRoomUrl);
+        window.location.href = `/chat/${chatId}`;
       } else {
         console.error("Production Error: Chat ID missing from result.data", result.data);
       }
