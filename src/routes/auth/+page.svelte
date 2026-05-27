@@ -8,15 +8,15 @@
   import { Button } from "$lib/components/ui/button";
   import type { PageProps } from './$types';
   import { enhance } from "$app/forms";
+  import { goto } from "$app/navigation";
 
 	let { form }: PageProps = $props();
 </script>
 
 <form novalidate use:enhance={() => {
-  return ({ result }) => {
-    if (result.type === 'success') {
-      const chatId = result.data?.['id']; 
-      window.location.href = `/chat/${chatId}`;
+  return async ({ result }) => {
+    if (result.type === 'success') { 
+      await goto(`/chat/${result.data?.['id']}`);
     }
   }
 }} method="POST" class="grid w-screen h-screen place-content-center">
