@@ -15,18 +15,10 @@
 
 <form use:enhance={() => {
   return async ({ result, update }) => {
+    console.log(result);
     if (result.type === 'success') {
       const chatId = result.data?.['id'] || result.data; 
-
-      try {
-        if (chatId) {
-          await goto(`/chat/${chatId}`);
-        }
-      } catch (error) {
-        console.error(error);
-        console.error("Production Error: Chat ID missing from result.data", result.data);
-      }
-      
+      await goto(`${window.location.origin}/chat/${chatId}`);
       await update({ reset: true });
     }
   }
