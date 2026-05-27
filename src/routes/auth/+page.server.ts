@@ -36,8 +36,8 @@ export const actions = {
         cookies.set(sessionCookieName, sessionId, {
             path: '/',
             httpOnly: true,
-            secure: true,
-            sameSite: 'lax',
+            secure: isSecure,
+            sameSite: 'strict',
             maxAge: 60 * 60 * 1,
         });
 
@@ -46,8 +46,8 @@ export const actions = {
         cookies.set(chatCookieName, hashedChatId, {
             path: '/',
             httpOnly: true,
-            secure: true,
-            sameSite: 'lax',
+            secure: isSecure,
+            sameSite: 'strict',
             maxAge: 60 * 60 * 1,
         });
 
