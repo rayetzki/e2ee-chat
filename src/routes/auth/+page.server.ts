@@ -55,6 +55,6 @@ export const actions = {
             'INSERT INTO connections (id, chat_id, user_name) VALUES (?, ?, ?)'
         ).run(sessionId, password?.toString()!, name?.toString()!);
 
-        return hashedChatId;
+        return { id: hashedChatId };
 	}
 } satisfies Actions;

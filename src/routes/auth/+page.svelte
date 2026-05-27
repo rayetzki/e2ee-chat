@@ -14,9 +14,17 @@
 </script>
 
 <form use:enhance={() => {
-  return async ({ result }) => {
+  return async ({ result, update }) => {
     if (result.type === 'success') {
-      await goto(`/chat/${result.data}`);
+      const chatId = result.data?.['id'] || result.data; 
+      
+      if (chatId) {
+        await goto(`/chat/${chatId}`);
+      } else {
+        console.error("Production Error: Chat ID missing from result.data", result.data);
+      }
+
+      await update({ reset: true });
     }
   }
 }} method="POST" class="grid w-screen h-screen place-content-center">
