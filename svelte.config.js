@@ -8,7 +8,7 @@ const config = {
 	},
 	kit: {
 		csrf: {
-			trustedOrigins: [process.env.ORIGIN]
+			trustedOrigins: ['*']
 		},
 		adapter: adapter({ precompress: false }),
 		alias: {
