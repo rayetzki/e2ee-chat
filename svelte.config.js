@@ -7,9 +7,6 @@ const config = {
 		runes: ({ filename }) => (filename.split(/[/\\]/).includes('node_modules') ? undefined : true)
 	},
 	kit: {
-		csrf: {
-			trustedOrigins: ['*']
-		},
 		adapter: adapter({ precompress: false }),
 		alias: {
 			"@/*": "./path/to/lib/*",

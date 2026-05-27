@@ -6,6 +6,7 @@
 	"scripts": {
 		"dev": "vite dev",
 		"build": "vite build",
+		"start": "node src/server.js",
 		"preview": "vite preview",
 		"prepare": "svelte-kit sync || echo ''",
 		"check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
@@ -22,6 +23,7 @@
 		"@tailwindcss/typography": "^0.5.19",
 		"@tailwindcss/vite": "^4.2.2",
 		"@types/better-sqlite3": "^7.6.13",
+		"@types/express": "^5.0.6",
 		"@types/node": "^25.9.1",
 		"@types/ws": "^8.18.1",
 		"bits-ui": "^2.18.1",
@@ -40,6 +42,7 @@
 	},
 	"dependencies": {
 		"better-sqlite3": "^12.10.0",
+		"express": "^5.2.1",
 		"ws": "^8.20.1"
 	}
 }
