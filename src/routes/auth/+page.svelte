@@ -17,13 +17,16 @@
   return async ({ result, update }) => {
     if (result.type === 'success') {
       const chatId = result.data?.['id'] || result.data; 
-      
-      if (chatId) {
-        await goto(`/chat/${chatId}`);
-      } else {
+
+      try {
+        if (chatId) {
+          await goto(`/chat/${chatId}`);
+        }
+      } catch (error) {
+        console.error(error);
         console.error("Production Error: Chat ID missing from result.data", result.data);
       }
-
+      
       await update({ reset: true });
     }
   }
