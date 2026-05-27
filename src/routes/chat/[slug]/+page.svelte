@@ -9,6 +9,7 @@
   import { decryptText, deriveSharedKey, encryptText, exportPublicKey, generateKeyPair, importPublicKey, base64ToArrayBuffer } from "$lib/crypto";
   import { loadKeyPairFromStorage, saveKeyPairToStorage, cleanupClientStorage } from '$lib/key-storage';
   import { goto } from "$app/navigation";
+  import { resolve } from "$app/paths";
   
   const { data }: PageProps = $props();
 
@@ -286,7 +287,7 @@
     use:enhance={() => {
       return async () => {
         await cleanupClientStorage(data.chatId);
-        await goto('/auth');
+        await goto(resolve('/auth'));
       }
     }}
   >

@@ -9,6 +9,7 @@
   import type { PageProps } from './$types';
   import { enhance } from "$app/forms";
   import { goto } from "$app/navigation";
+  import { base, resolve } from "$app/paths";
 
 	let { form }: PageProps = $props();
 </script>
@@ -19,7 +20,8 @@
       const chatId = result.data?.['id'] || result.data; 
       
       if (chatId) {
-        await goto(`/chat/${chatId}`);
+        const chatRoomUrl = resolve(`/chat/${chatId}`);
+        await goto(chatRoomUrl);
       } else {
         console.error("Production Error: Chat ID missing from result.data", result.data);
       }
