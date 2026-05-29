@@ -31,16 +31,12 @@ export async function load({ cookies, params, url }) {
     const secret = env['CHAT_SALT_SECRET'] || 'dev-default-salt';
     const saltBase64 = createHash('sha256').update(`${fromConnection.chat_id}|${secret}`).digest('base64');
 
-    const protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
-    const websocketUrl = `${protocol}//${url.hostname}:${env['PORT']}/ws`;
-
     return {
         sessionId,
         fromConnection,
         toConnection,
         chatId: fromConnection.chat_id,
         salt: saltBase64,
-        websocketUrl,
     };
 }
 

@@ -228,8 +228,11 @@
 
     void (async () => {
       await initHandshake();
+      
+      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      const websocketUrl = `${protocol}//${window.location.host}/ws`;
 
-      ws = new WebSocket(data.websocketUrl);
+      ws = new WebSocket(websocketUrl);
       
       ws.onopen = async () => {
         socket = ws;
