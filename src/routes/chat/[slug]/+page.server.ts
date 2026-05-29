@@ -4,7 +4,7 @@ import { env } from '$env/dynamic/private';
 import { createHash } from 'node:crypto';
 import type { Connection } from "../../../types.js";
 
-export async function load({ cookies, params }) {
+export async function load({ cookies, params, url }) {
     const isSecure = env.NODE_ENV === 'production';
     const sessionCookieName = isSecure ? '__Host-sessionId' : 'sessionId';
     const sessionId = cookies.get(sessionCookieName);
@@ -14,7 +14,7 @@ export async function load({ cookies, params }) {
     }
 
     const connections = db.prepare<string, Connection>(
-        'SELECT * FROM connections WHERE chat_id = (SELECT chat_id FROM connections WHERE id = ?)'
+        "SELECT * FROM connections WHERE chat_id = (SELECT chat_id FROM connections WHERE id = ? AND created_at >= datetime('now', '-1 hour'))"
     ).all(sessionId);
 
     if (!connections || connections.length < 1) {
@@ -31,12 +31,16 @@ export async function load({ cookies, params }) {
     const secret = env['CHAT_SALT_SECRET'] || 'dev-default-salt';
     const saltBase64 = createHash('sha256').update(`${fromConnection.chat_id}|${secret}`).digest('base64');
 
+    const protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
+    const websocketUrl = `${protocol}//${url.hostname}:${env['PORT']}/ws`;
+
     return {
         sessionId,
         fromConnection,
         toConnection,
         chatId: fromConnection.chat_id,
         salt: saltBase64,
+        websocketUrl,
     };
 }
 

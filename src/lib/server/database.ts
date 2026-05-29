@@ -5,8 +5,6 @@ const db = new Database(env.DB_URL || 'local.db', {
   verbose: env.NODE_ENV !== 'production' ? console.log : undefined,
 });
 
-db.exec(`DROP TABLE IF EXISTS connections`);
-
 db.exec(`
   CREATE TABLE IF NOT EXISTS connections (
     id TEXT PRIMARY KEY NOT NULL,
