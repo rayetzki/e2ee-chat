@@ -325,7 +325,7 @@
       await initHandshake();
       
       const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-      const websocketUrl = `${protocol}//${window.location.hostname}:3000/ws`;
+      const websocketUrl = `${protocol}//${window.location.host}/ws`;
 
       ws = new WebSocket(websocketUrl);
       
