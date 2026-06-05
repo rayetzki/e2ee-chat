@@ -1,8 +1,8 @@
-import { exportPublicKey, importPublicKey, importPrivateKey } from "./crypto";
+import { exportPublicKey, importPublicKey } from "./crypto";
 
-export const DB_NAME = 'e2ee-keys-db';
+const DB_NAME = 'e2ee-keys-db';
 const STORE_NAME = 'keys';
-export const STORAGE_PREFIX = 'e2ee-keypair-';
+const STORAGE_PREFIX = 'e2ee-keypair-';
 
 type StoredPrivateKey = {
   chatId: string;
@@ -27,7 +27,7 @@ function openDB(): Promise<IDBDatabase> {
   });
 }
 
-export async function saveKeyPairToStorage(chatId: string, keyPair: CryptoKeyPair) {
+export async function saveKeyPair(chatId: string, keyPair: CryptoKeyPair): Promise<void> {
   try {
     const publicKey = await exportPublicKey(keyPair.publicKey);
     window.localStorage.setItem(`${STORAGE_PREFIX}${chatId}`, JSON.stringify({ publicKey }));
@@ -50,13 +50,13 @@ export async function saveKeyPairToStorage(chatId: string, keyPair: CryptoKeyPai
   }
 }
 
-export async function loadKeyPairFromStorage(chatId: string) {
+export async function loadKeyPair(chatId: string): Promise<CryptoKeyPair | null> {
   try {
     const db = await openDB();
     const tx = db.transaction(STORE_NAME, 'readonly');
     const store = tx.objectStore(STORE_NAME);
     const req = store.get(chatId);
-    const record: StoredPrivateKey = await new Promise((resolve, reject) => {
+    const record = await new Promise<StoredPrivateKey>((resolve, reject) => {
       req.onsuccess = () => resolve(req.result);
       req.onerror = () => reject(req.error);
     });
@@ -74,37 +74,18 @@ export async function loadKeyPairFromStorage(chatId: string) {
         }
       }
 
-      if (!publicKey && record.privateKey) {
-        try {
-          return null;
-        } catch (err) {
-          return null;
-        }
-      }
+      if (!publicKey) return null;
 
-      return { publicKey, privateKey: record.privateKey } as CryptoKeyPair;
+      return { publicKey, privateKey: record.privateKey };
     }
   } catch (err) {
-    console.warn('IndexedDB load failed, falling back to localStorage', err);
+    console.warn('IndexedDB load failed', err);
   }
 
-  const stored = window.localStorage.getItem(`${STORAGE_PREFIX}${chatId}`);
-  if (!stored) return null;
-
-  try {
-    const parsed = JSON.parse(stored);
-    if (!parsed.publicKey || !parsed.privateKey) return null;
-    const publicKey = await importPublicKey(parsed.publicKey);
-    const privateKey = await importPrivateKey(parsed.privateKey);
-    return { publicKey, privateKey } as CryptoKeyPair;
-  } catch (error) {
-    console.warn('Failed to load stored key pair', error);
-    window.localStorage.removeItem(`${STORAGE_PREFIX}${chatId}`);
-    return null;
-  }
+  return null;
 }
 
-export async function cleanupClientStorage(chatId: string) {
+export async function cleanup(chatId: string): Promise<void> {
   try {
     window.localStorage.removeItem(`${STORAGE_PREFIX}${chatId}`);
   } catch (err) {

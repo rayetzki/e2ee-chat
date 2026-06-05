@@ -55,19 +55,6 @@ export async function exportPrivateKey(privateKey: CryptoKey) {
   return arrayBufferToBase64(raw);
 }
 
-export async function importPrivateKey(privateKeyBase64: string) {
-  return await window.crypto.subtle.importKey(
-    'pkcs8',
-    base64ToArrayBuffer(privateKeyBase64),
-    {
-      name: 'ECDH',
-      namedCurve: 'P-256',
-    },
-    true,
-    ['deriveKey']
-  );
-}
-
 export async function deriveSharedKey(remotePublicKey: CryptoKey, privateKey: CryptoKey, info?: Uint8Array | string, salt?: Uint8Array | string | ArrayBuffer) {
   const sharedBits = await window.crypto.subtle.deriveBits(
     { name: 'ECDH', public: remotePublicKey },
@@ -85,7 +72,7 @@ export async function deriveSharedKey(remotePublicKey: CryptoKey, privateKey: Cr
 
   const infoBuf = typeof info === 'string' ? new TextEncoder().encode(info) : (info ?? new Uint8Array());
 
-  const infoBuffer: ArrayBuffer = infoBuf instanceof Uint8Array
+  const infoBuffer = infoBuf instanceof Uint8Array
     ? (infoBuf.buffer.slice(infoBuf.byteOffset, infoBuf.byteOffset + infoBuf.byteLength) as ArrayBuffer)
     : (infoBuf as ArrayBuffer);
 
@@ -136,7 +123,6 @@ export async function decryptText(sharedKey: CryptoKey, ciphertextBase64: string
     sharedKey,
     ciphertext
   );
-
   return new TextDecoder().decode(decrypted);
 }
 

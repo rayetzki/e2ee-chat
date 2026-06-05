@@ -6,15 +6,16 @@ export type Connection = {
 }
 
 export type Message = {
+    id: string;
     senderId: string;
     senderName: string;
     chatId: string;
     message: string;
-    status: MessageType;
+    status: MessageStatus;
     timestamp: number;
 }
 
-export enum MessageType {
+export enum MessageStatus {
     Pending,
     Read
 }
@@ -41,12 +42,16 @@ export type SendPublicKeyPayload = {
 
 export type EncryptedMessagePayload = {
     type: 'message';
+    id: string;
     senderId: string;
     senderName: string;
     chatId: string;
     ciphertext: string;
     iv: string;
+    status: MessageStatus;
     timestamp: number;
 }
+
+export type EncryptedMessage = Omit<EncryptedMessagePayload, 'type'>;
 
 export type NetworkPayload = GetPublicKeyPayload | SendPublicKeyPayload | EncryptedMessagePayload;

@@ -5,17 +5,20 @@
   import { onMount } from 'svelte';
   import { Button } from "$lib/components/ui/button";
   import Textarea from "$lib/components/ui/textarea/textarea.svelte";
-  import { MessageType, type EncryptedMessagePayload, type Message, type NetworkPayload, type SendPublicKeyPayload, type GetPublicKeyPayload } from "../../../types";
+  import { MessageStatus, type EncryptedMessagePayload, type Message, type NetworkPayload, type SendPublicKeyPayload, type GetPublicKeyPayload, type EncryptedMessage } from "../../../types";
   import { decryptText, deriveSharedKey, encryptText, exportPublicKey, generateKeyPair, importPublicKey, base64ToArrayBuffer } from "$lib/crypto";
-  import { loadKeyPairFromStorage, saveKeyPairToStorage, cleanupClientStorage } from '$lib/key-storage';
+  import { loadKeyPair, saveKeyPair, cleanup as cleanupKeyStorage } from '$lib/key-storage';
   import { goto } from "$app/navigation";
+  import { cleanupChatMessages, loadMessages, saveMessage } from "$lib/message-storage";
   
   const { data }: PageProps = $props();
 
   let messages = $state<Message[]>([]);
+
   let newMessage = $state('');
   let socket = $state<WebSocket | null>(null);
-  let sharedKey = $state<CryptoKey | null>(null);
+  let transportKey = $state<CryptoKey | null>(null);
+  let messageKey = $state<CryptoKey | null>(null);
   let localPublicKeyBase64 = $state('');
   let status = $state("Чекаю з'єднання і обміну ключами...");
   let keyPair = $state<CryptoKeyPair | null>(null);
@@ -42,12 +45,12 @@
   }
 
   async function initHandshake() {
-    const storedKeyPair = await loadKeyPairFromStorage(data.chatId);
+    const storedKeyPair = await loadKeyPair(data.chatId);
     keyPair = storedKeyPair ?? await generateKeyPair();
     localPublicKeyBase64 = await exportPublicKey(keyPair.publicKey);
     
     if (!storedKeyPair) {
-      await saveKeyPairToStorage(data.chatId, keyPair);
+      await saveKeyPair(data.chatId, keyPair);
     }
   }
 
@@ -73,7 +76,7 @@
 
     socket.send(JSON.stringify(payload));
 
-    if (!sharedKey) {
+    if (!messageKey) {
       status = 'Запитано публічний ключ співбесідника...';
     }
   }
@@ -93,7 +96,7 @@
     await sendPublicKey();
 
     handshakeInterval = setInterval(async () => {
-      if (sharedKey) {
+      if (messageKey) {
         clearHandshakeTimers();
         return;
       }
@@ -117,6 +120,66 @@
     }, REKEY_INTERVAL_MS);
   }
 
+  async function loadInitialMessages(): Promise<Message[]> {
+    try {
+      const encryptedMessages = await loadMessages(data.chatId);
+
+      const decryptedMessagesPromises = encryptedMessages.map(
+        async (message) => {
+          if (!messageKey && !transportKey) return null;
+
+          let decryptedMessage: string | null = null;
+
+          if (messageKey) {
+            try {
+              decryptedMessage = await decryptText(messageKey, message.ciphertext, message.iv);
+            } catch (err) {
+              decryptedMessage = null;
+            }
+          }
+
+          if (!decryptedMessage && transportKey) {
+            try {
+              decryptedMessage = await decryptText(transportKey, message.ciphertext, message.iv);
+              // migrated message: re-encrypt with the persistent messageKey if available
+              if (decryptedMessage && messageKey) {
+                try {
+                  const reEnc = await encryptText(messageKey, decryptedMessage);
+                  await saveMessage({ ...message, ciphertext: reEnc.ciphertext, iv: reEnc.iv });
+                } catch (e) {
+                  console.warn('Failed to migrate stored message', message.id, e);
+                }
+              }
+            } catch (err) {
+              decryptedMessage = null;
+            }
+          }
+
+          if (!decryptedMessage) {
+            console.warn('Failed to decrypt stored message', message.id);
+            return null;
+          }
+
+          return {
+            id: message.id,
+            senderId: message.senderId,
+            senderName: message.senderName,
+            chatId: message.chatId,
+            message: decryptedMessage,
+            status: message.status,
+            timestamp: message.timestamp,
+          };
+        }
+      );
+
+      const decryptedMessages = await Promise.all(decryptedMessagesPromises);
+      return decryptedMessages.filter((message) => message !== null);
+    } catch (error) {
+      console.error(`Could not load initial messages`, error);
+      return [];
+    }
+  }
+
   async function sendPublicKey() {
     if (!socket || socket.readyState !== WebSocket.OPEN || !localPublicKeyBase64) {
       return;
@@ -134,7 +197,7 @@
 
     socket.send(JSON.stringify(payload));
   
-    if (!sharedKey) {
+    if (!messageKey) {
       status = 'Відправлений публічний ключ. Чекаю на співбесідника...';
     }
   }
@@ -149,10 +212,15 @@
       return;
     }
 
-    const remoteKeyBase64 = payload.ephemeralPublicKey ?? payload.publicKey;
-    const remotePublicKey = await importPublicKey(remoteKeyBase64);
-    const privateKeyToUse = payload.ephemeralPublicKey ? ephemeralKeyPair?.privateKey : keyPair.privateKey;
-    if (!privateKeyToUse) {
+    // derive two keys:
+    // - transportKey: using ephemeral keys when available (for handshake/transport)
+    // - messageKey: persistent key derived from long-term public keys (used for encrypting/storing messages)
+
+    // import long-term public key
+    const remoteLongPublicKey = await importPublicKey(payload.publicKey);
+
+    // derive persistent message key using long-term keys
+    if (!keyPair?.privateKey) {
       status = 'Помилка обміну ключами';
       return;
     }
@@ -160,31 +228,57 @@
     const ids = [data.sessionId, payload.senderId].sort().join(':');
     const info = `${data.chatId}:${ids}`;
     const saltBuf = data.salt ? base64ToArrayBuffer(data.salt) : undefined;
-    sharedKey = await deriveSharedKey(remotePublicKey, privateKeyToUse, info, saltBuf);
+
+    try {
+      messageKey = await deriveSharedKey(remoteLongPublicKey, keyPair.privateKey, info, saltBuf);
+    } catch (err) {
+      console.warn('Failed to derive persistent message key', err);
+      status = 'Помилка обміну ключами';
+      return;
+    }
+
+    if (payload.ephemeralPublicKey) {
+      const remoteEphemeral = await importPublicKey(payload.ephemeralPublicKey);
+      const privateKeyToUse = ephemeralKeyPair?.privateKey ?? keyPair.privateKey;
+      try {
+        transportKey = await deriveSharedKey(remoteEphemeral, privateKeyToUse, info, saltBuf);
+      } catch (err) {
+        console.warn('Failed to derive transport key', err);
+      }
+    } else {
+      transportKey = messageKey;
+    }
+
+    messages = await loadInitialMessages();
     status = 'Обмін ключами успішний';
 
     clearHandshakeTimers();
     scrollToBottom();
   }
 
-  async function handleEncryptedMessage(payload: EncryptedMessagePayload) {
-    if (!sharedKey) {
+  async function handleEncryptedMessage(payload: EncryptedMessage) {
+    if (!messageKey) {
       console.warn('Encrypted message received before key exchange.');
       return;
     }
 
-    const message = await decryptText(
-      sharedKey,
-      payload.ciphertext,
-      payload.iv
-    );
+    await saveMessage(payload);
+
+    let messageText = '';
+    try {
+      messageText = await decryptText(messageKey, payload.ciphertext, payload.iv);
+    } catch (err) {
+      console.warn('Failed to decrypt incoming message', payload.id, err);
+      messageText = '[Unable to decrypt]';
+    }
 
     messages.push({
+      id: payload.id,
       senderId: payload.senderId,
       senderName: payload.senderName,
       chatId: payload.chatId,
-      message,
-      status: MessageType.Pending,
+      message: messageText,
+      status: MessageStatus.Pending,
       timestamp: payload.timestamp,
     });
 
@@ -203,8 +297,8 @@
     }
 
     if (payload.type === 'get-public-key') {
-      const req = payload as GetPublicKeyPayload;
-      if (req.senderId !== data.sessionId && !sharedKey) {
+      const req = { ...payload } satisfies GetPublicKeyPayload;
+      if (req.senderId !== data.sessionId && !messageKey) {
         await sendPublicKey();
       }
       return;
@@ -216,7 +310,8 @@
     }
 
     if (payload.type === 'message') {
-      await handleEncryptedMessage(payload);
+      const { type, ...message } = payload;
+      await handleEncryptedMessage(message);
       return;
     }
 
@@ -230,7 +325,7 @@
       await initHandshake();
       
       const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-      const websocketUrl = `${protocol}//${window.location.host}/ws`;
+      const websocketUrl = `${protocol}//${window.location.hostname}:3000/ws`;
 
       ws = new WebSocket(websocketUrl);
       
@@ -258,18 +353,20 @@
   });
 
   async function sendMessage() {
-    if (!sharedKey) return;
+    if (!messageKey) return;
 
     if (socket?.readyState === WebSocket.OPEN) {
-      const encrypted = await encryptText(sharedKey, newMessage);
+      const encrypted = await encryptText(messageKey, newMessage);
 
       const payload: EncryptedMessagePayload = {
         type: 'message',
+        id: window.crypto.randomUUID(),
         senderId: data.sessionId,
         senderName: data.fromConnection.user_name,
         chatId: data.chatId,
         ciphertext: encrypted.ciphertext,
         iv: encrypted.iv,
+        status: MessageStatus.Pending,
         timestamp: Date.now(),
       };
 
@@ -287,7 +384,10 @@
     method="POST"
     use:enhance={() => {
       return async () => {
-        await cleanupClientStorage(data.chatId);
+        await Promise.all([
+          cleanupKeyStorage(data.chatId),
+          cleanupChatMessages(data.chatId)
+        ]);
         await goto('/auth');
       }
     }}
@@ -300,7 +400,7 @@
 {#if handshakeAttempts}
   <p class="mx-4 mb-2 text-xs text-slate-400">Retry attempts: {handshakeAttempts}/{MAX_HANDSHAKE_ATTEMPTS}</p>
 {/if}
-{#if handshakeAttempts >= MAX_HANDSHAKE_ATTEMPTS && !sharedKey}
+{#if handshakeAttempts >= MAX_HANDSHAKE_ATTEMPTS && !messageKey}
   <p class="mx-4 mb-2 text-xs text-rose-400">Не вдалося завершити ключовий обмін. Перезавантажте сторінку або спробуйте пізніше.</p>
 {/if}
 
@@ -330,14 +430,14 @@
   <Textarea
     class="min-h-[92px]"
     bind:value={newMessage}
-    placeholder={socket?.readyState === WebSocket.OPEN ? (sharedKey ? 'Повідомлення' : 'Очікування ключа...') : "Установлюється з’єднання"}
-    disabled={!sharedKey || socket?.readyState !== WebSocket.OPEN}
+    placeholder={socket?.readyState === WebSocket.OPEN ? (messageKey ? 'Повідомлення' : 'Очікування ключа...') : "Установлюється з’єднання"}
+    disabled={!messageKey || socket?.readyState !== WebSocket.OPEN}
     onkeydown={handleMessageKeydown}
   />
   <Button
     class="self-end mt-2"
     onclick={sendMessage}
-    disabled={!sharedKey || !newMessage.trim() || socket?.readyState !== WebSocket.OPEN}
+    disabled={!messageKey || !newMessage.trim() || socket?.readyState !== WebSocket.OPEN}
   >
     Відправити
   </Button>
