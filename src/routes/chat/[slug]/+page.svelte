@@ -39,7 +39,7 @@
     const messageIdsToUpdate: string[] = [];
     
     for (const message of messages) {
-      if (message.status !== MessageStatus.Read) {
+      if (message.senderId !== data.sessionId && message.status !== MessageStatus.Read) {
         const messageListItem = messageListItems.find((item) => item.id === message.id);
         const { bottom } = messageListItem?.getBoundingClientRect()!;
         if (bottom <= messageListEl.clientHeight) {
