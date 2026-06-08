@@ -5,11 +5,11 @@
   import { onMount } from 'svelte';
   import { Button } from "$lib/components/ui/button";
   import Textarea from "$lib/components/ui/textarea/textarea.svelte";
-  import { MessageStatus, type EncryptedMessagePayload, type Message, type NetworkPayload, type SendPublicKeyPayload, type GetPublicKeyPayload, type EncryptedMessage } from "../../../types";
+  import { MessageStatus, type EncryptedMessagePayload, type Message, type NetworkPayload, type SendPublicKeyPayload, type GetPublicKeyPayload, type EncryptedMessage, type UpdateMessageVisibilityStatusPayload } from "../../../types";
   import { decryptText, deriveSharedKey, encryptText, exportPublicKey, generateKeyPair, importPublicKey, base64ToArrayBuffer } from "$lib/crypto";
   import { loadKeyPair, saveKeyPair, cleanup as cleanupKeyStorage } from '$lib/key-storage';
   import { goto } from "$app/navigation";
-  import { cleanupChatMessages, loadMessages, saveMessage } from "$lib/message-storage";
+  import { cleanupChatMessages, loadMessages, saveMessage, updateMessageStatus } from "$lib/message-storage";
   
   const { data }: PageProps = $props();
 
@@ -32,9 +32,47 @@
   let rekeyTimer: ReturnType<typeof setInterval> | null = null;
   const REKEY_INTERVAL_MS = 1000 * 60 * 10; // 10 minutes
 
+  $effect(() => {
+    if (!messageListEl || !socket) return;
+ 
+    const messageListItems = Array.from(messageListEl.querySelectorAll('li'));
+    const messageIdsToUpdate: string[] = [];
+    
+    for (const message of messages) {
+      if (message.status !== MessageStatus.Read) {
+        const messageListItem = messageListItems.find((item) => item.id === message.id);
+        const { bottom } = messageListItem?.getBoundingClientRect()!;
+        if (bottom <= messageListEl.clientHeight) {
+          messageIdsToUpdate.push(message.id);
+        }
+      }
+    }
+
+    if (messageIdsToUpdate.length > 0) {
+      const payload: UpdateMessageVisibilityStatusPayload = {
+        type: 'update-messages-visibility',
+        ids: messageIdsToUpdate,
+        chatId: data.chatId,
+        status: MessageStatus.Read
+      };
+
+      socket.send(JSON.stringify(payload));
+    }
+  });
+
   function scrollToBottom() {
     if (!messageListEl) return;
     messageListEl.scrollTo({ top: messageListEl.scrollHeight, behavior: 'smooth' });
+  }
+
+  function getMessageStatusText(status: MessageStatus) {
+    switch (status) {
+      case MessageStatus.Read:
+        return 'Прочитано';
+      case MessageStatus.Pending:
+      default:
+        return 'Не прочитано';
+    }
   }
 
   async function handleMessageKeydown(event: KeyboardEvent) {
@@ -67,7 +105,6 @@
     const payload: GetPublicKeyPayload = {
       type: 'get-public-key',
       senderId: data.sessionId,
-      senderName: data.fromConnection.user_name,
       chatId: data.chatId,
       publicKey: localPublicKeyBase64,
       ephemeralPublicKey: ephemeralPublicKeyBase64 || undefined,
@@ -188,7 +225,6 @@
     const payload: SendPublicKeyPayload = {
       type: 'send-public-key',
       senderId: data.sessionId,
-      senderName: data.fromConnection.user_name,
       chatId: data.chatId,
       publicKey: localPublicKeyBase64,
       ephemeralPublicKey: ephemeralPublicKeyBase64 || undefined,
@@ -278,7 +314,7 @@
       senderName: payload.senderName,
       chatId: payload.chatId,
       message: messageText,
-      status: MessageStatus.Pending,
+      status: payload.status,
       timestamp: payload.timestamp,
     });
 
@@ -315,6 +351,17 @@
       return;
     }
 
+    if (payload.type === 'update-messages-visibility') {
+      const { ids, status } = payload;
+      for (const message of messages) {
+        if (ids.includes(message.id)) {
+          message.status = status;
+          updateMessageStatus(message.id, status);
+        }
+      }
+      return;
+    }
+
     console.warn('Unknown payload type', payload);
   }
 
@@ -337,6 +384,7 @@
       };
 
       ws.onmessage = handleSocketMessage;
+      
       ws.onclose = () => {
         console.log('WebSocket disconnected.');
         status = "Не в мережі";
@@ -407,23 +455,28 @@
 <div class="overflow-y-auto px-4 pb-36 pt-2 min-h-[50vh]" bind:this={messageListEl}>
   <ul class="flex flex-col gap-3">
     {#each messages as msg}
-    {#if msg.senderId === data.fromConnection.id}
-      <li class="self-end px-4">
-        <div class="inline-block rounded-3xl bg-sky-500/10 px-4 py-3 text-right text-slate-900 shadow-sm ring-1 ring-slate-200">
+      <li id={msg.id} class={[msg.senderId === data.fromConnection.id ? "self-end" : "self-start", "px-4"]}>
+        <div class={[
+          "inline-block rounded-3xl shadow-sm p-3 min-w-[100px] text-right",
+          msg.senderId === data.fromConnection.id
+            ? "text-slate-900 ring-1 ring-slate-200 bg-sky-500/10"
+            : "text-slate-100 bg-slate-900/90"
+          ]
+        }>
           <p class="whitespace-pre-wrap">{msg.message}</p>
-          <p class="mt-1 text-xs text-slate-500">{msg.senderName}</p>
+          <div class="mt-1 space-y-1">
+            <p class="text-xs text-slate-500">{msg.senderName}</p>
+            <p class={[
+              "text-[8px] uppercase tracking-wide",
+              msg.senderId === data.fromConnection.id ? "text-slate-400" : "text-slate-500"
+            ]}>
+              {getMessageStatusText(msg.status)}
+            </p>
+          </div>
         </div>
       </li>
-    {:else}
-      <li class="self-start px-4">
-        <div class="inline-block rounded-3xl bg-slate-900/90 px-4 py-3 text-left text-slate-100 shadow-sm">
-          <p class="whitespace-pre-wrap">{msg.message}</p>
-          <p class="mt-1 text-xs text-slate-400">{msg.senderName}</p>
-        </div>
-      </li>
-    {/if}
-  {/each}
-</ul>
+    {/each}
+  </ul>
 </div>
 
 <section class="fixed bottom-0 right-0 left-0 px-3 pb-3 backdrop-blur">

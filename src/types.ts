@@ -23,7 +23,6 @@ export enum MessageStatus {
 export type GetPublicKeyPayload = {
     type: 'get-public-key';
     senderId: string;
-    senderName: string;
     chatId: string;
     publicKey: string;
     ephemeralPublicKey?: string | undefined;
@@ -33,7 +32,6 @@ export type GetPublicKeyPayload = {
 export type SendPublicKeyPayload = {
     type: 'send-public-key';
     senderId: string;
-    senderName: string;
     chatId: string;
     publicKey: string;
     ephemeralPublicKey?: string | undefined;
@@ -52,6 +50,13 @@ export type EncryptedMessagePayload = {
     timestamp: number;
 }
 
+export type UpdateMessageVisibilityStatusPayload = {
+    type: 'update-messages-visibility',
+    ids: string[];
+    chatId: string;
+    status: MessageStatus;
+}
+
 export type EncryptedMessage = Omit<EncryptedMessagePayload, 'type'>;
 
-export type NetworkPayload = GetPublicKeyPayload | SendPublicKeyPayload | EncryptedMessagePayload;
+export type NetworkPayload = GetPublicKeyPayload | SendPublicKeyPayload | EncryptedMessagePayload | UpdateMessageVisibilityStatusPayload;

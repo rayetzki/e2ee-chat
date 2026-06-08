@@ -1,4 +1,5 @@
 import type { EncryptedMessage } from "../types";
+import type { MessageStatus } from "../types";
 
 const DB_NAME = 'e2ee-messages-db';
 const STORE_NAME = 'messages';
@@ -39,6 +40,32 @@ export async function saveMessage(message: EncryptedMessage): Promise<void> {
     });
   } catch (err) {
     console.warn('IndexedDB failed to save message', err);
+  }
+}
+
+export async function updateMessageStatus(id: string, status: MessageStatus): Promise<void> {
+  try {
+    const db = await openDB();
+    const tx = db.transaction(STORE_NAME, 'readwrite');
+    const store = tx.objectStore(STORE_NAME);
+    const req = store.get(id);
+
+    const message = await new Promise<EncryptedMessage | undefined>((resolve, reject) => {
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error);
+    });
+
+    if (!message) return;
+
+    store.put({ ...message, status });
+
+    await new Promise((res, rej) => {
+      tx.oncomplete = () => res(true);
+      tx.onerror = () => rej(tx.error);
+      tx.onabort = () => rej(tx.error || new Error('transaction aborted'));
+    });
+  } catch (err) {
+    console.warn('IndexedDB failed to update message status', err);
   }
 }
 

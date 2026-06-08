@@ -4,7 +4,7 @@ import { env } from '$env/dynamic/private';
 import { createHash } from 'node:crypto';
 import type { Connection } from "../../../types.js";
 
-export async function load({ cookies, params, url }) {
+export async function load({ cookies, params }) {
     const isSecure = env.NODE_ENV === 'production';
     const sessionCookieName = isSecure ? '__Host-sessionId' : 'sessionId';
     const sessionId = cookies.get(sessionCookieName);
