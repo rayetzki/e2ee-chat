@@ -18,7 +18,7 @@ export class ConnectionManager {
     await this.keyPairManager.createKeyPair(chatId);
 
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-    const websocketUrl = `${protocol}//${window.location.hostname}:3000/ws`;
+    const websocketUrl = `${protocol}//${window.location.host}/ws`;
 
     this.socket = new WebSocket(websocketUrl);
 
