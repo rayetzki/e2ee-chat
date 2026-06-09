@@ -2,7 +2,7 @@
 import express from "express";
 import http from "http";
 import { handler } from '../build/handler.js';
-import { WebSocketServer, WebSocket } from "ws";
+import { WebSocketServer } from "ws";
 
 const PUBLIC_KEY_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 const publicKeyCache = new Map();
