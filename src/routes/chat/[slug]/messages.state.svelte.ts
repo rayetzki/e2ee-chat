@@ -4,7 +4,7 @@ import {
   saveMessage,
   updateMessageStatus,
 } from "$lib/message-storage";
-import type { EncryptedMessage, Message, MessageStatus } from "../../../types";
+import { MessageStatus, type EncryptedMessage, type Message } from "../../../types";
 
 export class MessageManager {
   messages = $state<Message[]>([]);
@@ -131,5 +131,34 @@ export class MessageManager {
         updateMessageStatus(message.id, status);
       }
     }
+  }
+  
+  checkMessagesVisibility(messageListElDOM: Readonly<HTMLUListElement>, sessionId: string): string[] {
+    const messageIdsToUpdate = [];
+    const messageListItems = Array.from(messageListElDOM.querySelectorAll('li'));
+  
+    for (const message of this.messages) {
+      if (
+        message.senderId !== sessionId &&
+        message.status !== MessageStatus.Read
+      ) {
+        const messageListItem = messageListItems.find(
+          (item) => item.id === message.id,
+        );
+
+        if (!messageListItem) {
+          console.warn(`Message with ${message.id} was not found in the list`);
+          continue;
+        }
+
+        const { bottom } = messageListItem.getBoundingClientRect();
+
+        if (bottom <= messageListElDOM.clientHeight) {
+          messageIdsToUpdate.push(message.id);
+        }
+      }
+    }
+
+    return messageIdsToUpdate;
   }
 }

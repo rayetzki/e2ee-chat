@@ -26,34 +26,22 @@
   const { data }: PageProps = $props();
 
   let newMessage = $state("");
-  let messageListEl: HTMLDivElement | null = null;
+  let messageListWrapper: HTMLDivElement | null = null;
 
   const keyPairManager = new KeyPairManager();
   const messageManager = new MessageManager();
   const connectionManager = new ConnectionManager(keyPairManager);
 
   $effect(() => {
-    if (!messageListEl || !connectionManager.socket) return;
+    if (!messageListWrapper || !connectionManager.socket) return;
 
-    const messageListItems = Array.from(messageListEl.querySelectorAll("li"));
-    const messageIdsToUpdate: string[] = [];
+    const messageListEl = messageListWrapper.querySelector('ul');
+    if (!messageListEl) return;
 
-    for (const message of messageManager.messages) {
-      if (
-        message.senderId !== data.sessionId &&
-        message.status !== MessageStatus.Read
-      ) {
-        const messageListItem = messageListItems.find(
-          (item) => item.id === message.id,
-        );
-
-        const { bottom } = messageListItem?.getBoundingClientRect()!;
-
-        if (bottom <= messageListEl.clientHeight) {
-          messageIdsToUpdate.push(message.id);
-        }
-      }
-    }
+    const messageIdsToUpdate = messageManager.checkMessagesVisibility(
+      messageListEl,
+      data.sessionId,
+    );
 
     if (messageIdsToUpdate.length > 0) {
       const payload: UpdateMessageVisibilityStatusPayload = {
@@ -68,10 +56,10 @@
   });
 
   function scrollToBottom() {
-    if (!messageListEl) return;
+    if (!messageListWrapper) return;
 
-    messageListEl.scrollTo({
-      top: messageListEl.scrollHeight,
+    messageListWrapper.scrollTo({
+      top: messageListWrapper.scrollHeight,
       behavior: "smooth",
     });
   }
@@ -220,9 +208,9 @@
 
 <div
   class="overflow-y-auto px-4 pb-36 pt-2 min-h-[50vh]"
-  bind:this={messageListEl}
+  bind:this={messageListWrapper}
 >
-  <ul class="flex flex-col gap-3">
+  <ul class="flex flex-col gap-3" aria-atomic="false" aria-live="polite" aria-label="Chat messages" role="log" aria-relevant="additions text">
     {#each messageManager.messages as msg}
       <li
         id={msg.id}
