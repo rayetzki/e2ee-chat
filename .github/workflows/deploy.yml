@@ -1,0 +1,108 @@
+name: CI / Deploy
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Use Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Build production app
+        run: NODE_ENV=production npm run build
+
+  deploy:
+    name: Deploy to remote server
+    needs: build
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push'
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: eu-central-1
+
+      - name: Run Deployment Script via SSM
+        run: |
+          cat > /tmp/ssm-commands.json <<'EOF'
+          {
+            "commands": [
+              "cd /home/ubuntu/e2ee-chat",
+              "git reset --hard origin/main",
+              "export NVM_DIR=/home/ubuntu/.nvm && [ -s \"$NVM_DIR/nvm.sh\" ] && . \"$NVM_DIR/nvm.sh\"",
+              "npm install",
+              "NODE_ENV=production npm run build",
+              "sudo -H -u ubuntu bash -lc 'export NVM_DIR=/home/ubuntu/.nvm && [ -s \"$NVM_DIR/nvm.sh\" ] && . \"$NVM_DIR/nvm.sh\" && cd /home/ubuntu/e2ee-chat && npx pm2 restart all'"
+            ]
+          }
+          EOF
+
+          COMMAND_ID=$(aws ssm send-command \
+            --document-name "AWS-RunShellScript" \
+            --instance-ids "i-0b3166d57d23cf8af" \
+            --parameters file:///tmp/ssm-commands.json \
+            --region eu-central-1 \
+            --query "Command.CommandId" \
+            --output text)
+
+          echo "Triggered SSM Command ID: $COMMAND_ID"
+          echo "Sleeping for 10 seconds to allow AWS SSM to register the invocation..."
+          sleep 10
+
+          aws ssm wait command-executed \
+            --command-id "$COMMAND_ID" \
+            --instance-id "i-0b3166d57d23cf8af" \
+            --region eu-central-1 || true
+
+          STATUS=$(aws ssm get-command-invocation \
+            --command-id "$COMMAND_ID" \
+            --instance-id "i-0b3166d57d23cf8af" \
+            --query "Status" \
+            --region eu-central-1 \
+            --output text)
+
+          echo "SSM Execution Finished with Status: $STATUS"
+
+          echo "--- SSM StandardOutputContent ---"
+          aws ssm get-command-invocation \
+            --command-id "$COMMAND_ID" \
+            --instance-id "i-0b3166d57d23cf8af" \
+            --query "StandardOutputContent" \
+            --region eu-central-1 \
+            --output text || true
+
+          echo "--- SSM StandardErrorContent ---"
+          aws ssm get-command-invocation \
+            --command-id "$COMMAND_ID" \
+            --instance-id "i-0b3166d57d23cf8af" \
+            --query "StandardErrorContent" \
+            --region eu-central-1 \
+            --output text || true
+
+          if [ "$STATUS" != "Success" ]; then
+            echo "❌ SSM Command Failed or Timed Out!"
+            exit 1
+          fi
