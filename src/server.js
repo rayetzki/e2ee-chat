@@ -76,18 +76,37 @@ const server = http.createServer(app);
 const wss = new WebSocketServer({ noServer: true });
 
 server.on('upgrade', (request, socket, head) => {
-    const { pathname } = new URL(request.url, `http://${request.headers.host}`);
-    
+    let pathname;
+    try {
+        pathname = new URL(request.url, `http://${request.headers.host}`).pathname;
+    } catch (err) {
+        console.error('Failed to parse upgrade URL', err, request.url, request.headers && request.headers.host);
+        socket.destroy();
+        return;
+    }
+
+    console.log('Upgrade request', { url: request.url, host: request.headers.host, pathname, upgrade: request.headers.upgrade, origin: request.headers.origin });
+
     if (pathname === '/ws') {
-        wss.handleUpgrade(request, socket, head, (ws) => {
-            wss.emit('connection', ws, request);
-        });
+        try {
+            wss.handleUpgrade(request, socket, head, (wsConn) => {
+                wss.emit('connection', wsConn, request);
+            });
+        } catch (err) {
+            console.error('handleUpgrade failed', err);
+            try { socket.destroy(); } catch (e) {}
+        }
     } else {
         socket.destroy();
     }
 });
 
-wss.on('connection', (ws) => {
+wss.on('connection', (ws, request) => {
+    try {
+        console.log('WS connection established', { remote: request && request.socket && request.socket.remoteAddress, origin: request && request.headers && request.headers.origin });
+    } catch (e) {
+        console.log('WS connection (no request info)');
+    }
     ws.on('message', (msg) => {
         const message = typeof msg === 'string' ? msg : msg.toString();
 
