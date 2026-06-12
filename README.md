@@ -1,3 +1,5 @@
+[![CI / Deploy](https://github.com/rayetzki/e2ee-chat/actions/workflows/deploy.yml/badge.svg)](https://github.com/rayetzki/e2ee-chat/actions/workflows/deploy.yml)
+
 # sv
 
 Everything you need to build a Svelte project, powered by [`sv`](https://github.com/sveltejs/cli).
