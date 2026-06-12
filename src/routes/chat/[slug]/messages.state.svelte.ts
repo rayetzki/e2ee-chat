@@ -133,9 +133,13 @@ export class MessageManager {
     }
   }
   
-  checkMessagesVisibility(messageListElDOM: Readonly<HTMLUListElement>, sessionId: string): string[] {
+  checkMessagesVisibility(messageListDOM: Readonly<HTMLDivElement>, sessionId: string): string[] {
     const messageIdsToUpdate = [];
-    const messageListItems = Array.from(messageListElDOM.querySelectorAll('li'));
+  
+    const messageListEl = messageListDOM.querySelector('ul');
+    if (!messageListEl) return [];
+
+    const messageListItems = Array.from(messageListEl.querySelectorAll('li'));
   
     for (const message of this.messages) {
       if (
@@ -153,7 +157,7 @@ export class MessageManager {
 
         const { bottom } = messageListItem.getBoundingClientRect();
 
-        if (bottom <= messageListElDOM.clientHeight) {
+        if (bottom <= messageListDOM.clientHeight) {
           messageIdsToUpdate.push(message.id);
         }
       }

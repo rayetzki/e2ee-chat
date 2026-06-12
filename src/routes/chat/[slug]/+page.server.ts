@@ -4,9 +4,12 @@ import { env } from '$env/dynamic/private';
 import { createHash } from 'node:crypto';
 import type { Connection } from "../../../types.js";
 
-export async function load({ cookies, params }) {
+export async function load({ cookies, params, depends }) {
+    depends('chat:connections');
+
     const isSecure = env.NODE_ENV === 'production';
     const sessionCookieName = isSecure ? '__Host-sessionId' : 'sessionId';
+
     const sessionId = cookies.get(sessionCookieName);
 
     if (!sessionId) {
@@ -14,7 +17,7 @@ export async function load({ cookies, params }) {
     }
 
     const connections = db.prepare<string, Connection>(
-        "SELECT * FROM connections WHERE chat_id = (SELECT chat_id FROM connections WHERE id = ? AND created_at >= datetime('now', '-1 hour'))"
+        "SELECT * FROM connections WHERE chat_id = (SELECT chat_id FROM connections WHERE id = ? AND created_at >= datetime('now', '-1 hour')) AND created_at >= datetime('now', '-1 hour')"
     ).all(sessionId);
 
     if (!connections || connections.length < 1) {
@@ -35,6 +38,7 @@ export async function load({ cookies, params }) {
         sessionId,
         fromConnection,
         toConnection,
+        connectionCount: connections.length,
         chatId: fromConnection.chat_id,
         salt: saltBase64,
     };

@@ -57,6 +57,18 @@ export type UpdateMessageVisibilityStatusPayload = {
     status: MessageStatus;
 }
 
+export type UserConnectPayload = {
+    type: 'user-connected';
+    id: string;
+    chatId: string;
+}
+
+export type UserDisconnectPayload = {
+    type: 'user-disconnected',
+    id: string;
+    chatId: string;
+}
+
 export type EncryptedMessage = Omit<EncryptedMessagePayload, 'type'>;
 
-export type NetworkPayload = GetPublicKeyPayload | SendPublicKeyPayload | EncryptedMessagePayload | UpdateMessageVisibilityStatusPayload;
+export type NetworkPayload = GetPublicKeyPayload | SendPublicKeyPayload | EncryptedMessagePayload | UpdateMessageVisibilityStatusPayload | UserConnectPayload | UserDisconnectPayload;

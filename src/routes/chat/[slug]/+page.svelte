@@ -14,7 +14,7 @@
   } from "../../../types";
   import { encryptText } from "$lib/crypto";
   import { cleanup as cleanupKeyStorage } from "$lib/key-storage";
-  import { goto } from "$app/navigation";
+  import { goto, invalidate } from "$app/navigation";
   import { cleanupChatMessages } from "$lib/message-storage";
   import { KeyPairManager } from "./keypair.state.svelte";
   import { MessageManager } from "./messages.state.svelte";
@@ -35,11 +35,8 @@
   $effect(() => {
     if (!messageListWrapper || !connectionManager.socket) return;
 
-    const messageListEl = messageListWrapper.querySelector('ul');
-    if (!messageListEl) return;
-
     const messageIdsToUpdate = messageManager.checkMessagesVisibility(
-      messageListEl,
+      messageListWrapper,
       data.sessionId,
     );
 
@@ -128,6 +125,12 @@
         break;
       }
 
+      case "user-disconnected": 
+      case "user-connected": {
+        await invalidate('chat:connections');
+        break;
+      }
+
       default: {
         throw new Error("Unknown payload type", payload);
       }
@@ -147,7 +150,7 @@
   });
 
   async function sendMessage() {
-    if (!keyPairManager.messageKey) return;
+    if (!keyPairManager.messageKey || data.connectionCount < 2) return;
 
     if (connectionManager.socket?.readyState === WebSocket.OPEN) {
       const encrypted = await encryptText(
@@ -181,6 +184,13 @@
     method="POST"
     use:enhance={() => {
       return async () => {
+        connectionManager.socket?.send(
+          JSON.stringify({
+            type: "user-disconnected",
+            chatId: data.chatId,
+            id: data.sessionId,
+          })
+        );
         await Promise.all([
           cleanupKeyStorage(data.chatId),
           cleanupChatMessages(data.chatId),
@@ -193,18 +203,23 @@
   </form>
 </nav>
 
-<p class="mx-4 mb-2 text-sm text-slate-500">{connectionManager.status}</p>
-{#if connectionManager.handshakeAttempts}
-  <p class="mx-4 mb-2 text-xs text-slate-400">
-    Retry attempts: {connectionManager.handshakeAttempts}/{MAX_HANDSHAKE_ATTEMPTS}
-  </p>
-{/if}
-{#if connectionManager.handshakeAttempts >= MAX_HANDSHAKE_ATTEMPTS && !keyPairManager.messageKey}
-  <p class="mx-4 mb-2 text-xs text-rose-400">
-    Не вдалося завершити ключовий обмін. Перезавантажте сторінку або спробуйте
-    пізніше.
-  </p>
-{/if}
+<div class="flex flex-row justify-between align-center px-4 my-3">
+  <div>
+    <p class="mb-2 text-sm text-slate-500">{connectionManager.status}</p>
+    {#if connectionManager.handshakeAttempts}
+      <p class="mb-2 text-xs text-slate-400">
+        Retry attempts: {connectionManager.handshakeAttempts}/{MAX_HANDSHAKE_ATTEMPTS}
+      </p>
+    {/if}
+    {#if connectionManager.handshakeAttempts >= MAX_HANDSHAKE_ATTEMPTS && !keyPairManager.messageKey}
+      <p class="mx-4 mb-2 text-xs text-rose-400">
+        Не вдалося завершити ключовий обмін. Перезавантажте сторінку або спробуйте
+        пізніше.
+      </p>
+    {/if}
+  </div>
+  <p class="text-sm text-slate-500">Онлайн: {data.connectionCount}</p>
+</div>
 
 <div
   class="overflow-y-auto px-4 pb-36 pt-2 min-h-[50vh]"

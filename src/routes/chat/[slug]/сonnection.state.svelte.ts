@@ -1,3 +1,4 @@
+import { invalidate } from "$app/navigation";
 import type { GetPublicKeyPayload, SendPublicKeyPayload } from "../../../types";
 import type { KeyPairManager } from "./keypair.state.svelte";
 
@@ -27,7 +28,7 @@ export class ConnectionManager {
       await this.start(chatId, sessionId);
     };
 
-    this.socket.onclose = () => {
+    this.socket.onclose = async () => {
       console.log("WebSocket disconnected.");
       this.status = "Не в мережі";
       this.clearHandshakeTimers();
@@ -115,6 +116,7 @@ export class ConnectionManager {
         this.status =
           "Не вдалося встановити захищене з'єднання. Оновіть сторінку або спробуйте пізніше.";
         this.clearHandshakeTimers();
+        await invalidate('chat:connections');
         return;
       }
 
@@ -154,6 +156,14 @@ export class ConnectionManager {
       this.status = "Помилка обміну ключами";
       return;
     }
+    
+    this.socket?.send(
+      JSON.stringify({
+        type: "user-connected",
+        chatId: payload.chatId,
+        id: sessionId,
+      })
+    );
 
     this.status = "Обмін ключами успішний";
     this.clearHandshakeTimers();
