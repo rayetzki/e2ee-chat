@@ -9,6 +9,7 @@ const REKEY_INTERVAL_MS = 1000 * 60 * 10; // 10 minutes
 export class ConnectionManager {
   socket = $state<WebSocket | null>(null);
   status = $state("Чекаю з'єднання і обміну ключами...");
+  isConnected = $state(false);
   handshakeInterval: ReturnType<typeof setInterval> | null = null;
   handshakeAttempts = $state(0);
   rekeyTimer: ReturnType<typeof setInterval> | null = null;
@@ -32,12 +33,14 @@ export class ConnectionManager {
       this.socket.onopen = async () => {
         console.log("WebSocket connected!");
         await this.start(chatId, sessionId);
+        this.isConnected = true;
       };
 
       this.socket.onclose = async (ev) => {
         console.log('WebSocket disconnected.', { code: ev.code, reason: ev.reason });
         this.status = 'Не в мережі';
         this.clearHandshakeTimers();
+        this.isConnected = false;
       };
 
       this.socket.onerror = (event) => {

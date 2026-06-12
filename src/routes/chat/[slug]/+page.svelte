@@ -125,9 +125,16 @@
         break;
       }
 
-      case "user-disconnected": 
       case "user-connected": {
-        await invalidate('chat:connections');
+        await invalidate("chat:connections");
+        break;
+      }
+
+      case "user-disconnected": {
+        await invalidate("chat:connections");
+        if (data.connectionCount < 2) {
+          connectionManager.status = 'Не в мережі';
+        }
         break;
       }
 
@@ -140,7 +147,7 @@
   onMount(() => {
     void (async () => {
       await connectionManager.connect(data.chatId, data.sessionId);
-      
+
       if (connectionManager.socket) {
         connectionManager.socket.onmessage = handleSocketMessage;
       }
@@ -152,7 +159,7 @@
   async function sendMessage() {
     if (!keyPairManager.messageKey || data.connectionCount < 2) return;
 
-    if (connectionManager.socket?.readyState === WebSocket.OPEN) {
+    if (connectionManager.isConnected) {
       const encrypted = await encryptText(
         keyPairManager.messageKey,
         newMessage,
@@ -170,7 +177,7 @@
         timestamp: Date.now(),
       };
 
-      connectionManager.socket.send(JSON.stringify(payload));
+      connectionManager.socket?.send(JSON.stringify(payload));
       newMessage = "";
       scrollToBottom();
     }
@@ -189,7 +196,7 @@
             type: "user-disconnected",
             chatId: data.chatId,
             id: data.sessionId,
-          })
+          }),
         );
         await Promise.all([
           cleanupKeyStorage(data.chatId),
@@ -213,8 +220,8 @@
     {/if}
     {#if connectionManager.handshakeAttempts >= MAX_HANDSHAKE_ATTEMPTS && !keyPairManager.messageKey}
       <p class="mx-4 mb-2 text-xs text-rose-400">
-        Не вдалося завершити ключовий обмін. Перезавантажте сторінку або спробуйте
-        пізніше.
+        Не вдалося завершити ключовий обмін. Перезавантажте сторінку або
+        спробуйте пізніше.
       </p>
     {/if}
   </div>
@@ -225,7 +232,14 @@
   class="overflow-y-auto px-4 pb-36 pt-2 min-h-[50vh]"
   bind:this={messageListWrapper}
 >
-  <ul class="flex flex-col gap-3" aria-atomic="false" aria-live="polite" aria-label="Chat messages" role="log" aria-relevant="additions text">
+  <ul
+    class="flex flex-col gap-3"
+    aria-atomic="false"
+    aria-live="polite"
+    aria-label="Chat messages"
+    role="log"
+    aria-relevant="additions text"
+  >
     {#each messageManager.messages as msg}
       <li
         id={msg.id}
@@ -268,13 +282,14 @@
   <Textarea
     class="min-h-[92px]"
     bind:value={newMessage}
-    placeholder={connectionManager.socket?.readyState === WebSocket.OPEN
+    placeholder={connectionManager.isConnected
       ? keyPairManager.messageKey
         ? "Повідомлення"
         : "Очікування ключа..."
-      : "Установлюється з’єднання"}
+      : "Установлюється з'єднання"}
     disabled={!keyPairManager.messageKey ||
-      connectionManager.socket?.readyState !== WebSocket.OPEN}
+      !connectionManager.isConnected ||
+      data.connectionCount < 2}
     onkeydown={handleMessageKeydown}
   />
   <Button
@@ -282,7 +297,7 @@
     onclick={sendMessage}
     disabled={!keyPairManager.messageKey ||
       !newMessage.trim() ||
-      connectionManager.socket?.readyState !== WebSocket.OPEN}
+      !connectionManager.isConnected}
   >
     Відправити
   </Button>
