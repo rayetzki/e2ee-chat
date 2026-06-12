@@ -18,26 +18,37 @@ export class ConnectionManager {
   async connect(chatId: string, sessionId: string) {
     await this.keyPairManager.createKeyPair(chatId);
 
+    if (this.socket) {
+      this.socket.close();
+      this.socket = null;
+    }
+
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
     const websocketUrl = `${protocol}//${window.location.host}/ws`;
 
-    this.socket = new WebSocket(websocketUrl);
+    try {
+      this.socket = new WebSocket(websocketUrl);
 
-    this.socket.onopen = async () => {
-      console.log("WebSocket connected!");
-      await this.start(chatId, sessionId);
-    };
+      this.socket.onopen = async () => {
+        console.log("WebSocket connected!");
+        await this.start(chatId, sessionId);
+      };
 
-    this.socket.onclose = async () => {
-      console.log("WebSocket disconnected.");
-      this.status = "Не в мережі";
-      this.clearHandshakeTimers();
-    };
+      this.socket.onclose = async (ev) => {
+        console.log('WebSocket disconnected.', { code: ev.code, reason: ev.reason });
+        this.status = 'Не в мережі';
+        this.clearHandshakeTimers();
+      };
 
-    this.socket.onerror = (event) => {
-      console.error("WebSocket error", event);
+      this.socket.onerror = (event) => {
+        console.error('WebSocket error', event);
+        this.status = "Помилка з'єднання";
+      };
+    } catch (err) {
+      console.error('Failed to create WebSocket', err);
       this.status = "Помилка з'єднання";
-    };
+      this.socket = null;
+    }
   }
 
   getPublicKey(chatId: string, sessionId: string) {
