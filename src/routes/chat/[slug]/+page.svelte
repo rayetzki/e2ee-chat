@@ -32,6 +32,13 @@
   const messageManager = new MessageManager();
   const connectionManager = new ConnectionManager(keyPairManager);
 
+  const isMessageSendingDisabled = $derived(
+    !keyPairManager.messageKey ||
+    !connectionManager.isConnected ||
+    connectionManager.isFailedConnection ||
+    data.connectionCount < 2,
+  );
+
   $effect(() => {
     if (!messageListWrapper || !connectionManager.socket) return;
 
@@ -133,7 +140,8 @@
       case "user-disconnected": {
         await invalidate("chat:connections");
         if (data.connectionCount < 2) {
-          connectionManager.status = 'Не в мережі';
+          connectionManager.status = "Не в мережі";
+          connectionManager.isFailedConnection = true;
         }
         break;
       }
@@ -282,22 +290,20 @@
   <Textarea
     class="min-h-[92px]"
     bind:value={newMessage}
-    placeholder={connectionManager.isConnected
-      ? keyPairManager.messageKey
-        ? "Повідомлення"
-        : "Очікування ключа..."
-      : "Установлюється з'єднання"}
-    disabled={!keyPairManager.messageKey ||
-      !connectionManager.isConnected ||
-      data.connectionCount < 2}
+    placeholder={connectionManager.isFailedConnection
+      ? "З'єднання не встановлено"
+      : !keyPairManager.messageKey
+        ? "Очікування ключа..."
+        : !connectionManager.isConnected
+          ? "Установлюється з'єднання..."
+          : "Повідомлення..."}
+    disabled={isMessageSendingDisabled}
     onkeydown={handleMessageKeydown}
   />
   <Button
     class="self-end mt-2"
     onclick={sendMessage}
-    disabled={!keyPairManager.messageKey ||
-      !newMessage.trim() ||
-      !connectionManager.isConnected}
+    disabled={isMessageSendingDisabled}
   >
     Відправити
   </Button>

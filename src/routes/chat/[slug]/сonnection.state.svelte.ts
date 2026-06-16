@@ -10,6 +10,7 @@ export class ConnectionManager {
   socket = $state<WebSocket | null>(null);
   status = $state("Чекаю з'єднання і обміну ключами...");
   isConnected = $state(false);
+  isFailedConnection = $state(false);
   handshakeInterval: ReturnType<typeof setInterval> | null = null;
   handshakeAttempts = $state(0);
   rekeyTimer: ReturnType<typeof setInterval> | null = null;
@@ -24,8 +25,8 @@ export class ConnectionManager {
       this.socket = null;
     }
 
-    const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-    const websocketUrl = `${protocol}//${window.location.host}/ws`;
+    const protocol = window.location.protocol === "https:" ? "wss://" : "ws://";
+    const websocketUrl = `${protocol}${window.location.host}/ws`;
 
     try {
       this.socket = new WebSocket(websocketUrl);
@@ -34,23 +35,27 @@ export class ConnectionManager {
         console.log("WebSocket connected!");
         await this.start(chatId, sessionId);
         this.isConnected = true;
+        this.isFailedConnection = false;
       };
 
       this.socket.onclose = async (ev) => {
         console.log('WebSocket disconnected.', { code: ev.code, reason: ev.reason });
         this.status = 'Не в мережі';
         this.clearHandshakeTimers();
+        this.isFailedConnection = true;
         this.isConnected = false;
       };
 
       this.socket.onerror = (event) => {
         console.error('WebSocket error', event);
         this.status = "Помилка з'єднання";
+        this.isFailedConnection = true;
       };
     } catch (err) {
       console.error('Failed to create WebSocket', err);
       this.status = "Помилка з'єднання";
       this.socket = null;
+      this.isFailedConnection = true;
     }
   }
 
@@ -130,6 +135,7 @@ export class ConnectionManager {
         this.status =
           "Не вдалося встановити захищене з'єднання. Оновіть сторінку або спробуйте пізніше.";
         this.clearHandshakeTimers();
+        this.isFailedConnection = true;
         await invalidate('chat:connections');
         return;
       }
@@ -153,6 +159,7 @@ export class ConnectionManager {
   ) {
     if (!this.keyPairManager.keyPair?.privateKey) {
       this.status = "Помилка обміну ключами";
+      this.isFailedConnection = true;
       return;
     }
 
@@ -168,6 +175,7 @@ export class ConnectionManager {
     } catch (err) {
       console.error(err);
       this.status = "Помилка обміну ключами";
+      this.isFailedConnection = true;
       return;
     }
     
@@ -180,6 +188,7 @@ export class ConnectionManager {
     );
 
     this.status = "Обмін ключами успішний";
+    this.isFailedConnection = false;
     this.clearHandshakeTimers();
   }
 }
