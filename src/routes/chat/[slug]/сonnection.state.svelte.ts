@@ -26,7 +26,7 @@ export class ConnectionManager {
     }
 
     const protocol = window.location.protocol === "https:" ? "wss://" : "ws://";
-    const websocketUrl = `${protocol}${window.location.host}/ws`;
+    const websocketUrl = `${protocol}${window.location.hostname}:3000/ws`;
 
     try {
       this.socket = new WebSocket(websocketUrl);

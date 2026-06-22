@@ -103,7 +103,10 @@ server.on('upgrade', (request, socket, head) => {
 
 wss.on('connection', (ws, request) => {
     try {
-        console.log('WS connection established', { remote: request && request.socket && request.socket.remoteAddress, origin: request && request.headers && request.headers.origin });
+        console.log('WS connection established', {
+            remote: request && request.socket && request.socket.remoteAddress,
+            origin: request && request.headers && request.headers.origin
+        });
     } catch (e) {
         console.log('WS connection (no request info)');
     }

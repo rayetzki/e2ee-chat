@@ -1,5 +1,5 @@
 import { fail } from '@sveltejs/kit';
-import { randomBytes } from 'node:crypto';
+import { randomBytes, scryptSync, timingSafeEqual } from 'node:crypto';
 import type { Actions } from './$types';
 import { env } from '$env/dynamic/private';
 import db from '$lib/server/database';
@@ -16,15 +16,29 @@ export const actions = {
             errors["name"] = "Ім'я обов'язкове";
         }
 
-        if (
-            !password ||
-            !password.toString().trim() ||
-            password?.toString().trim() !== env.SECRET_WORD
-        ) {
+        if (!password || !password.toString().trim()) {
             errors["password"] = "Неправильний пароль";
         }
 
         if (Object.values(errors).some((value) => value)) {
+            return fail(400, { errors });
+        }
+
+        if (!Object.hasOwn(env, 'SECRET_WORD_HASH')) {
+            throw new Error('SECRET_WORD_HASH is required for auth verification');
+        } else if (!Object.hasOwn(env, 'SECRET_WORD_SALT')) {
+            throw new Error('SECRET_WORD_SALT is required for auth verification');
+        }
+
+        const submittedPassword = password?.toString().trim()!;
+        const derivedSecret = scryptSync(submittedPassword, env['SECRET_WORD_SALT'], 64);
+        const storedSecretBuffer = Buffer.from(env['SECRET_WORD_HASH'], 'hex');
+
+        if (
+            storedSecretBuffer.length !== derivedSecret.length ||
+            !timingSafeEqual(derivedSecret, storedSecretBuffer)
+        ) {
+            errors["password"] = "Неправильний пароль";
             return fail(400, { errors });
         }
 
@@ -41,9 +55,9 @@ export const actions = {
             maxAge: 60 * 60 * 1,
         });
 
-        const hashedChatId = await hashText(password?.toString()!);
+        const chatId = await hashText(submittedPassword);
 
-        cookies.set(chatCookieName, hashedChatId, {
+        cookies.set(chatCookieName, chatId, {
             path: '/',
             httpOnly: true,
             secure: isSecure,
@@ -53,8 +67,8 @@ export const actions = {
 
         db.prepare<[string, string, string]>(
             'INSERT INTO connections (id, chat_id, user_name) VALUES (?, ?, ?)'
-        ).run(sessionId, password?.toString()!, name?.toString()!);
+        ).run(sessionId, chatId, name?.toString()!);
 
-        return { id: hashedChatId };
+        return { id: chatId };
 	}
 } satisfies Actions;
