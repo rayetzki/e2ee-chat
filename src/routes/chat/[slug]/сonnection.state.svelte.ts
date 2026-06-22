@@ -4,6 +4,7 @@ import type { KeyPairManager } from "./keypair.state.svelte";
 
 export const MAX_HANDSHAKE_ATTEMPTS = 5;
 const HANDSHAKE_RETRY_MS = 2000;
+const HEARTBEAT_INTERVAL_MS = 1000 * 25; // 20-30 seconds heartbeat
 const REKEY_INTERVAL_MS = 1000 * 60 * 10; // 10 minutes
 
 export class ConnectionManager {
@@ -14,6 +15,7 @@ export class ConnectionManager {
   handshakeInterval: ReturnType<typeof setInterval> | null = null;
   handshakeAttempts = $state(0);
   rekeyTimer: ReturnType<typeof setInterval> | null = null;
+  heartbeatTimer: ReturnType<typeof setInterval> | null = null;
 
   constructor(private readonly keyPairManager: KeyPairManager) {}
 
@@ -34,6 +36,7 @@ export class ConnectionManager {
       this.socket.onopen = async () => {
         console.log("WebSocket connected!");
         await this.start(chatId, sessionId);
+        this.startHeartbeat();
         this.isConnected = true;
         this.isFailedConnection = false;
       };
@@ -42,6 +45,7 @@ export class ConnectionManager {
         console.log('WebSocket disconnected.', { code: ev.code, reason: ev.reason });
         this.status = 'Не в мережі';
         this.clearHandshakeTimers();
+        this.clearHeartbeatTimer();
         this.isFailedConnection = true;
         this.isConnected = false;
       };
@@ -150,6 +154,26 @@ export class ConnectionManager {
         await this.sendPublicKey(chatId, sessionId);
       }
     }, REKEY_INTERVAL_MS);
+
+    this.startHeartbeat();
+  }
+
+  startHeartbeat() {
+    this.clearHeartbeatTimer();
+    this.heartbeatTimer = setInterval(() => {
+      if (this.socket?.readyState !== WebSocket.OPEN) {
+        return;
+      }
+
+      this.socket.send(JSON.stringify({ type: 'heartbeat', timestamp: Date.now() }));
+    }, HEARTBEAT_INTERVAL_MS);
+  }
+
+  clearHeartbeatTimer() {
+    if (this.heartbeatTimer) {
+      clearInterval(this.heartbeatTimer);
+      this.heartbeatTimer = null;
+    }
   }
 
   async derivePublicKeys(
