@@ -51,7 +51,13 @@ jobs:
           {
             "commands": [
               "cd /home/ubuntu/e2ee-chat",
-              "git pull --ff-only origin main",
+              "echo 'Current branch:' && git branch",
+              "echo 'Current commit:' && git rev-parse HEAD",
+              "echo 'Remote URL:' && git remote -v",
+              "git fetch origin main",
+              "echo 'After fetch, remote main:' && git rev-parse origin/main",
+              "git pull --ff-only origin main || (echo 'Git pull failed!' && exit 1)",
+              "echo 'After pull, local commit:' && git rev-parse HEAD",
               "export NVM_DIR=/home/ubuntu/.nvm && [ -s \"$NVM_DIR/nvm.sh\" ] && . \"$NVM_DIR/nvm.sh\"",
               "npm install",
               "NODE_ENV=production npm run build",
