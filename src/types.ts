@@ -69,6 +69,15 @@ export type UserDisconnectPayload = {
     chatId: string;
 }
 
+export type TypingPayload = {
+    type: 'typing';
+    senderId: string;
+    senderName: string;
+    chatId: string;
+    isTyping: boolean;
+    timestamp: number;
+}
+
 export type EncryptedMessage = Omit<EncryptedMessagePayload, 'type'>;
 
-export type NetworkPayload = GetPublicKeyPayload | SendPublicKeyPayload | EncryptedMessagePayload | UpdateMessageVisibilityStatusPayload | UserConnectPayload | UserDisconnectPayload;
+export type NetworkPayload = GetPublicKeyPayload | SendPublicKeyPayload | EncryptedMessagePayload | UpdateMessageVisibilityStatusPayload | UserConnectPayload | UserDisconnectPayload | TypingPayload;

@@ -10,6 +10,7 @@
     type EncryptedMessagePayload,
     type NetworkPayload,
     type GetPublicKeyPayload,
+    type TypingPayload,
     type UpdateMessageVisibilityStatusPayload,
   } from "../../../types";
   import { encryptText } from "$lib/crypto";
@@ -27,6 +28,9 @@
 
   let newMessage = $state("");
   let messageListWrapper: HTMLDivElement | null = null;
+  let typingUserName = $state("");
+  let typingTimeout: ReturnType<typeof setTimeout> | null = null;
+  const TYPING_INACTIVITY_MS = 3000;
 
   const keyPairManager = new KeyPairManager();
   const messageManager = new MessageManager();
@@ -73,6 +77,58 @@
       event.preventDefault();
       await sendMessage();
     }
+  }
+
+  function clearTypingTimer() {
+    if (typingTimeout) {
+      clearTimeout(typingTimeout);
+      typingTimeout = null;
+    }
+  }
+
+  function sendTypingIndicator(isTyping: boolean) {
+    if (
+      !connectionManager.socket ||
+      connectionManager.socket.readyState !== WebSocket.OPEN ||
+      data.connectionCount < 2
+    ) {
+      return;
+    }
+
+    connectionManager.socket.send(
+      JSON.stringify({
+        type: "typing",
+        senderId: data.sessionId,
+        senderName: data.fromConnection.user_name,
+        chatId: data.chatId,
+        isTyping,
+        timestamp: Date.now(),
+      }),
+    );
+  }
+
+  function resetTypingTimer() {
+    clearTypingTimer();
+    typingTimeout = setTimeout(() => {
+      sendTypingIndicator(false);
+      typingUserName = "";
+      typingTimeout = null;
+    }, TYPING_INACTIVITY_MS);
+  }
+
+  function handleTextareaInput() {
+    if (!connectionManager.socket || connectionManager.socket.readyState !== WebSocket.OPEN) {
+      return;
+    }
+
+    if (!newMessage.trim()) {
+      sendTypingIndicator(false);
+      clearTypingTimer();
+      return;
+    }
+
+    sendTypingIndicator(true);
+    resetTypingTimer();
   }
 
   async function handleSocketMessage(event: MessageEvent) {
@@ -137,6 +193,17 @@
         break;
       }
 
+      case "typing": {
+        const { senderId, isTyping, senderName } = payload as TypingPayload;
+        
+        if (senderId === data.sessionId) {
+          break;
+        }
+
+        typingUserName = isTyping ? senderName : "";
+        break;
+      }
+
       case "user-disconnected": {
         await invalidate("chat:connections");
         if (data.connectionCount < 2) {
@@ -191,6 +258,8 @@
 
       connectionManager.socket?.send(JSON.stringify(payload));
       newMessage = "";
+      sendTypingIndicator(false);
+      clearTypingTimer();
       scrollToBottom();
     }
   }
@@ -271,23 +340,16 @@
           <p class="whitespace-pre-wrap">{msg.message}</p>
           <div class="mt-1 space-y-1">
             <p class="text-xs text-slate-500">{msg.senderName}</p>
-            <p
-              class={[
-                "text-[8px] uppercase tracking-wide",
-                msg.senderId === data.fromConnection.id
-                  ? "text-slate-400"
-                  : "text-slate-500",
-              ]}
-            >
-              {msg.status === MessageStatus.Pending
-                ? "Не прочитано"
-                : "Прочитано"}
-            </p>
           </div>
         </div>
       </li>
     {/each}
   </ul>
+  {#if typingUserName.length > 0}
+    <p class="my-4 text-sm text-slate-600">
+      {typingUserName} зараз пише...
+    </p>
+  {/if}
 </div>
 
 <section class="fixed bottom-0 right-0 left-0 px-3 pb-3 backdrop-blur">
@@ -302,6 +364,7 @@
           ? "Установлюється з'єднання..."
           : "Повідомлення..."}
     disabled={isMessageSendingDisabled}
+    oninput={handleTextareaInput}
     onkeydown={handleMessageKeydown}
   />
   <Button

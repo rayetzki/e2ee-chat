@@ -137,7 +137,7 @@ wss.on('connection', (ws, request) => {
                 return;
             }
 
-            if (['message', 'update-messages-visibility', 'user-disconnected', 'user-connected'].includes(payload.type) && payload.chatId) {
+            if (['message', 'update-messages-visibility', 'user-disconnected', 'user-connected', 'typing'].includes(payload.type) && payload.chatId) {
                 broadcastToChat(payload.chatId, message, wss);
                 return;
             }
