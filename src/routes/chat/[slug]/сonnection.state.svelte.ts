@@ -23,6 +23,7 @@ export class ConnectionManager {
     await this.keyPairManager.createKeyPair(chatId);
 
     if (this.socket) {
+      this.cleanup();
       this.socket.close();
       this.socket = null;
     }
@@ -44,16 +45,17 @@ export class ConnectionManager {
       this.socket.onclose = async (ev) => {
         console.log('WebSocket disconnected.', { code: ev.code, reason: ev.reason });
         this.status = 'Не в мережі';
-        this.clearHandshakeTimers();
-        this.clearHeartbeatTimer();
-        this.isFailedConnection = true;
         this.isConnected = false;
+        this.isFailedConnection = true;
+        this.cleanup();
       };
 
       this.socket.onerror = (event) => {
         console.error('WebSocket error', event);
         this.status = "Помилка з'єднання";
         this.isFailedConnection = true;
+        this.cleanup();
+        this.socket?.close();
       };
     } catch (err) {
       console.error('Failed to create WebSocket', err);
@@ -118,6 +120,10 @@ export class ConnectionManager {
       clearInterval(this.handshakeInterval);
       this.handshakeInterval = null;
     }
+    if (this.rekeyTimer) {
+      clearInterval(this.rekeyTimer);
+      this.rekeyTimer = null;
+    }
     this.handshakeAttempts = 0;
   }
 
@@ -147,7 +153,6 @@ export class ConnectionManager {
       this.getPublicKey(chatId, sessionId);
     }, HANDSHAKE_RETRY_MS);
 
-    if (this.rekeyTimer) clearInterval(this.rekeyTimer);
     this.rekeyTimer = setInterval(async () => {
       await this.keyPairManager.generateEphemeralKey();
       if (this.socket?.readyState === WebSocket.OPEN) {
@@ -214,5 +219,10 @@ export class ConnectionManager {
     this.status = "Обмін ключами успішний";
     this.isFailedConnection = false;
     this.clearHandshakeTimers();
+  }
+
+  cleanup() {
+    this.clearHandshakeTimers();
+    this.clearHeartbeatTimer();
   }
 }

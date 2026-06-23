@@ -161,7 +161,11 @@
       }
     })();
 
-    return () => connectionManager.socket?.close();
+    return () => {
+      connectionManager.cleanup();
+      connectionManager.socket?.close();
+      connectionManager.socket = null;
+    };
   });
 
   async function sendMessage() {
