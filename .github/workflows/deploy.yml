@@ -51,7 +51,7 @@ jobs:
           {
             "commands": [
               "cd /home/ubuntu/e2ee-chat",
-              "git reset --hard origin/main",
+              "git pull --ff-only origin main",
               "export NVM_DIR=/home/ubuntu/.nvm && [ -s \"$NVM_DIR/nvm.sh\" ] && . \"$NVM_DIR/nvm.sh\"",
               "npm install",
               "NODE_ENV=production npm run build",
